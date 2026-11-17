@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DMI Diploma in English – Practice Hub</title>
+<meta name="description" content="DMI Computer Education – Diploma in English practice hub: vocabulary, listening, reading, writing and speaking.">
+<link rel="icon" href="assets/dmi-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Tamil:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+.hero{display:grid;grid-template-columns:1.1fr .9fr;gap:24px;align-items:start;padding-top:10px}
+@media(max-width:860px){.hero{grid-template-columns:1fr}}
+.hero h2{font-size:36px;line-height:1.1;margin:6px 0 10px}
+.hero h2 em{font-style:normal;background:var(--y);padding:0 6px}
+.skills{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:18px 0}
+.skills div{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}
+.skills b{display:block}
+.skills span{font-size:13px;color:var(--muted)}
+.steps{counter-reset:s;list-style:none;padding:0;margin:0}
+.steps li{counter-increment:s;padding-left:38px;position:relative;margin:10px 0}
+.steps li:before{content:counter(s);position:absolute;left:0;top:-1px;width:26px;height:26px;border-radius:50%;background:var(--ink);color:var(--y);font-weight:800;display:grid;place-items:center;font-size:14px}
+.tabs{display:grid;grid-template-columns:1fr 1fr;border:2px solid var(--ink);border-radius:12px;overflow:hidden;margin-bottom:6px}
+.tabs button{appearance:none;font:inherit;font-weight:800;padding:12px;border:0;background:#fff;cursor:pointer;color:var(--ink)}
+.tabs button[aria-selected=true]{background:var(--ink);color:var(--y)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+@media(max-width:520px){.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header class="top"><div class="in">
+  <img src="assets/dmi-logo.png" alt="DMI Computer Education logo">
+  <div><small>SINCE 2008</small><h1>DMI Computer Education</h1><div class="muted" style="color:#cfcfcf;font-size:12px;font-style:italic">Quality education creates bright future.</div></div>
+</div></header>
+<main class="wrap">
+  <div class="hero">
+    <section>
+      <div class="eyebrow">Diploma in English · Practice Hub</div>
+      <h2>A little practice every day. <em>A more confident you.</em></h2>
+      <p class="muted">Your DMI online practice room for the Diploma in English. Learn the words from your <b>Do it yourself</b> book, sit vocabulary tests, and practise listening, reading, writing and speaking from A1 to B2.</p>
+      <div class="skills">
+        <div><b>📚 Vocabulary</b><span>856 verbs, Tamil meanings, 4 tests</span></div>
+        <div><b>🎧 Listening</b><span>40 papers, A1–B2</span></div>
+        <div><b>📖 Reading</b><span>A1–B2 papers</span></div>
+        <div><b>✍️ Writing</b><span>Tasks with feedback</span></div>
+        <div><b>🗣️ Speaking</b><span>40 speaking units</span></div>
+        <div><b>📊 My results</b><span>Every mark saved</span></div>
+      </div>
+      <b>How to join</b>
+      <ol class="steps">
+        <li><b>Apply</b> with your name, mobile number and branch, and choose a password.</li>
+        <li><b>DMI approves</b> your application (usually the same day).</li>
+        <li><b>Sign in</b> with your mobile number and password. Access lasts 3 months and can be renewed.</li>
+      </ol>
+    </section>
+    <section class="card" style="border:2px solid var(--ink)">
+      <div class="tabs" role="tablist">
+        <button role="tab" id="tIn" aria-selected="true" aria-controls="fIn">Sign in</button>
+        <button role="tab" id="tAp" aria-selected="false" aria-controls="fAp">Apply</button>
+      </div>
+      <div id="notReady" class="msg warn" hidden>The hub is being set up. Please check again soon.</div>
+
+      <form id="fIn" role="tabpanel" aria-labelledby="tIn" novalidate>
+        <label for="inM">Mobile number</label>
+        <input type="tel" id="inM" autocomplete="username" inputmode="tel" placeholder="07X XXX XXXX">
+        <label for="inP">Password</label>
+        <input type="password" id="inP" autocomplete="current-password">
+        <div class="err" id="inErr" role="alert"></div>
+        <button class="btn pri" style="width:100%;font-size:17px" id="inBtn">Sign in</button>
+        <p class="muted" style="font-size:13.5px;margin:12px 0 0">Forgot your password? Ask your DMI branch to reset it. New student? Choose <b>Apply</b>.</p>
+      </form>
+
+      <form id="fAp" role="tabpanel" aria-labelledby="tAp" novalidate hidden>
+        <label for="apN">Full name</label>
+        <input type="text" id="apN" autocomplete="name" maxlength="80">
+        <div class="two">
+          <div><label for="apM">Mobile number (WhatsApp)</label><input type="tel" id="apM" autocomplete="tel" inputmode="tel" placeholder="07X XXX XXXX"></div>
+          <div><label for="apE">Email (optional)</label><input type="email" id="apE" autocomplete="email" maxlength="100"></div>
+        </div>
+        <div class="two">
+          <div><label for="apB">Branch</label><select id="apB"></select></div>
+          <div><label for="apR">DMI registration no. (if you have one)</label><input type="text" id="apR" maxlength="30" autocomplete="off"></div>
+        </div>
+        <label for="apC">Course</label><select id="apC"></select>
+        <div class="two">
+          <div><label for="apP">Choose a password</label><input type="password" id="apP" autocomplete="new-password" minlength="6"></div>
+          <div><label for="apP2">Type it again</label><input type="password" id="apP2" autocomplete="new-password"></div>
+        </div>
+        <div class="err" id="apErr" role="alert"></div>
+        <button class="btn pri" style="width:100%;font-size:17px" id="apBtn">Send application</button>
+      </form>
+      <div id="apDone" hidden>
+        <div class="msg ok" style="font-size:16px">✓ Application sent.</div>
+        <p>DMI will check and approve your application. Then sign in with your mobile number and the password you chose.</p>
+        <p class="muted">Need it quickly? WhatsApp <b class="hl"></b>.</p>
+        <button class="btn" id="apBack">Back to sign in</button>
+      </div>
+    </section>
+  </div>
+</main>
+<footer class="foot"><b>DMI Computer Education</b> · Since 2008 · Jaffna · Nelliady · Chavakachcheri · Chunnakam · Kilinochchi · Sandilipay · WhatsApp <span class="hl"></span><br><a href="admin.html">Staff sign-in</a></footer>
+<script src="assets/config.js"></script>
+<script src="assets/api.js"></script>
+<script>
+(function(){
+var C=DMI_CONFIG,A=DMI_API,$=function(i){return document.getElementById(i)};
+if(A.token())location.replace('hub.html');
+Array.prototype.forEach.call(document.querySelectorAll('.hl'),function(e){e.textContent=C.HOTLINE});
+$('apB').innerHTML='<option value="">Select your branch</option>'+C.BRANCHES.map(function(b){return '<option>'+b+'</option>'}).join('');
+$('apC').innerHTML=C.COURSES.map(function(b){return '<option>'+b+'</option>'}).join('');
+if(!A.ready())$('notReady').hidden=false;
+function tab(ap){$('tIn').setAttribute('aria-selected',!ap);$('tAp').setAttribute('aria-selected',ap);$('fIn').hidden=ap;$('fAp').hidden=!ap;$('apDone').hidden=true}
+$('tIn').onclick=function(){tab(false)};$('tAp').onclick=function(){tab(true)};
+if(location.hash==='#apply')tab(true);
+function mobile(v){var d=v.replace(/\D/g,'');if(d.length===11&&d.indexOf('94')===0)d='0'+d.slice(2);if(d.length===9)d='0'+d;return /^0\d{9}$/.test(d)?d:''}
+function busy(b,on,t){b.disabled=on;b.textContent=on?'Please wait…':t}
+$('fIn').onsubmit=function(e){e.preventDefault();var m=mobile($('inM').value),p=$('inP').value;
+  if(!m){$('inErr').textContent='Please enter your mobile number, e.g. 0771234567.';return}
+  if(!p){$('inErr').textContent='Please enter your password.';return}
+  $('inErr').textContent='';busy($('inBtn'),true);
+  A.call('login',{mobile:m,password:p}).then(function(r){busy($('inBtn'),false,'Sign in');
+    if(!r.ok){$('inErr').textContent=r.error;return}
+    A.setSession(r.token,r.user);location.replace('hub.html')})};
+$('fAp').onsubmit=function(e){e.preventDefault();
+  var d={name:$('apN').value.trim(),mobile:mobile($('apM').value),email:$('apE').value.trim(),branch:$('apB').value,regNo:$('apR').value.trim(),course:$('apC').value,password:$('apP').value};
+  var er=d.name.length<3?'Please enter your full name.':!d.mobile?'Please enter a valid mobile number, e.g. 0771234567.':(d.email&&!/^\S+@\S+\.\S+$/.test(d.email))?'Please check your email address.':!d.branch?'Please select your branch.':d.password.length<6?'Your password needs at least 6 characters.':d.password!==$('apP2').value?'The two passwords are not the same.':'';
+  $('apErr').textContent=er;if(er)return;busy($('apBtn'),true);
+  A.call('apply',d).then(function(r){busy($('apBtn'),false,'Send application');
+    if(!r.ok){$('apErr').textContent=r.error;return}
+    $('fAp').hidden=true;$('apDone').hidden=false;$('inM').value=d.mobile;$('fAp').reset()})};
+$('apBack').onclick=function(){tab(false);$('inP').focus()};
+})();
+</script>
+</body>
+</html>
