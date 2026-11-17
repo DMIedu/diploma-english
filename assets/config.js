@@ -1,7 +1,7 @@
 // DMI Diploma in English – Practice Hub settings. Edit this file only.
 window.DMI_CONFIG = {
   // Paste the Apps Script Web App URL here (ends with /exec). See apps-script/Code.gs.
-  API_URL: "",
+  API_URL: "https://script.google.com/macros/s/AKfycbw3v4v9gWdFgSfYeJTyNjmJKHHRNDtWsdL3NM95LuDwwWBP_uhMoXfE-38KCRULK644/exec",
 
   BRANCHES: ["Jaffna", "Nelliady", "Chavakachcheri", "Chunnakam", "Kilinochchi", "Sandilipay"],
   COURSES: ["Diploma in English", "Spoken English Part 1", "Spoken English Part 2", "Foundation English", "Business English", "Other"],
