@@ -131,16 +131,17 @@ function doPost(e) {
     switch (a) {
       case 'adminMe': return out_({ ok: true, user: staffPublic_(staff) });
       case 'staffData':
+        // Teachers get names and scores only – no phone, email, reg. no. or access dates.
         return out_({ ok: true, user: staffPublic_(staff),
-          students: read_('Students').filter(function (r) { return inScope(r.ID) && (isAdmin || r.Status === 'Active'); }).map(adminStudent_),
-          results: read_('Results').filter(function (r) { return inScope(r.StudentID); }).map(stripRow_),
-          writing: read_('Writing').filter(function (r) { return inScope(r.StudentID); }).map(stripRow_),
+          students: read_('Students').filter(function (r) { return inScope(r.ID) && (isAdmin || r.Status === 'Active'); }).map(isAdmin ? adminStudent_ : teacherStudent_),
+          results: read_('Results').filter(function (r) { return inScope(r.StudentID); }).map(isAdmin ? stripRow_ : teacherResult_),
+          writing: read_('Writing').filter(function (r) { return inScope(r.StudentID); }).map(isAdmin ? stripRow_ : teacherWriting_),
           batches: read_('Batches').filter(function (b) { return isAdmin || lower_(b.TeacherEmail) === lower_(staff.Email); }).map(stripRow_),
           staff: isAdmin ? read_('Admins').map(staffPublic_) : [staffPublic_(staff)] });
       // backwards compatible with v1 panel
-      case 'listStudents': return out_({ ok: true, data: read_('Students').filter(function (r) { return inScope(r.ID); }).map(adminStudent_) });
-      case 'listResults': return out_({ ok: true, data: read_('Results').filter(function (r) { return inScope(r.StudentID); }).map(stripRow_) });
-      case 'listWriting': return out_({ ok: true, data: read_('Writing').filter(function (r) { return inScope(r.StudentID); }).map(stripRow_) });
+      case 'listStudents': return out_({ ok: true, data: read_('Students').filter(function (r) { return inScope(r.ID); }).map(isAdmin ? adminStudent_ : teacherStudent_) });
+      case 'listResults': return out_({ ok: true, data: read_('Results').filter(function (r) { return inScope(r.StudentID); }).map(isAdmin ? stripRow_ : teacherResult_) });
+      case 'listWriting': return out_({ ok: true, data: read_('Writing').filter(function (r) { return inScope(r.StudentID); }).map(isAdmin ? stripRow_ : teacherWriting_) });
       case 'markWriting': return out_(markWriting_(p, staff, scope));
       case 'changeStaffPassword': return out_(changeStaffPassword_(staff, p));
     }
@@ -575,6 +576,10 @@ function adminStudent_(r) {
   var o = stripRow_(r); delete o.Salt; delete o.Hash; o.Mobile = mobile_(r.Mobile);
   o.State = r.Status === 'Active' && expired_(r.Expiry) ? 'Expired' : r.Status; return o;
 }
+function pick_(r, keys) { var o = {}; keys.forEach(function (k) { o[k] = r[k]; }); return o; }
+function teacherStudent_(r) { var o = pick_(r, ['ID', 'Name', 'BatchID', 'Status']); o.State = r.Status === 'Active' && expired_(r.Expiry) ? 'Expired' : r.Status; return o; }
+function teacherResult_(r) { return pick_(r, ['StudentID', 'Name', 'Time', 'Skill', 'Level', 'Test', 'Score', 'Max', 'Percent']); }
+function teacherWriting_(r) { return pick_(r, ['ID', 'StudentID', 'Name', 'Time', 'Level', 'TaskID', 'Task', 'Words', 'Text', 'AIBand', 'AIFeedback', 'TeacherMark', 'TeacherComment', 'MarkedBy']); }
 function staffPublic_(r) { return { email: lower_(r.Email), name: r.Name, role: role_(r), active: yes_(r.Active), hasPassword: !!r.Hash }; }
 function role_(r) { return /^teacher$/i.test(String(r.Role || '').trim()) ? 'Teacher' : 'Admin'; }
 function yes_(v) { return /^(yes|true|y|1)$/i.test(String(v).trim()); }
