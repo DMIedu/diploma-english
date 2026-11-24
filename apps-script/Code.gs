@@ -28,7 +28,7 @@ var VOCAB_TESTS = ['Vocabulary Test 1', 'Vocabulary Test 2', 'Vocabulary Test 3'
 var TABS = {
   Students: ['ID', 'Name', 'Mobile', 'Email', 'RegNo', 'Branch', 'Course', 'Status', 'AppliedOn', 'ApprovedOn',
              'Expiry', 'ApprovedBy', 'Note', 'Salt', 'Hash', 'LastLogin', 'BatchID'],
-  Admins:   ['Email', 'Name', 'Salt', 'Hash', 'Active', 'Created', 'Role'],
+  Admins:   ['Email', 'Name', 'Salt', 'Hash', 'Active', 'Created', 'Role', 'Branch'],
   Sessions: ['TokenHash', 'Role', 'UserKey', 'Expires'],
   Results:  ['ID', 'Time', 'StudentID', 'Name', 'RegNo', 'Branch', 'Skill', 'Level', 'Test', 'Score', 'Max',
              'Percent', 'Minutes', 'Detail'],
@@ -36,7 +36,7 @@ var TABS = {
              'AIBand', 'AIFeedback', 'TeacherMark', 'TeacherComment', 'MarkedBy'],
   Batches:  ['ID', 'Name', 'Branch', 'Course', 'Schedule', 'TeacherEmail', 'Active', 'Created', 'Note']
 };
-var SCHEMA_VERSION = 'v2';
+var SCHEMA_VERSION = 'v3';
 
 // ---------------- menu ----------------
 function onOpen() {
@@ -125,27 +125,38 @@ function doPost(e) {
     // ----- staff (admin or teacher) -----
     var staff = read_('Admins').filter(function (r) { return lower_(r.Email) === s.key && yes_(r.Active); })[0];
     if (!staff) return out_({ ok: false, code: 'AUTH', error: 'Please sign in again.' });
-    var isAdmin = role_(staff) === 'Admin';
-    var scope = isAdmin ? null : teacherStudentIds_(staff.Email);   // null = everything
+    var role = role_(staff), isAdmin = role === 'Admin', isBranch = role === 'Branch', isMgr = isAdmin || isBranch;
+    // Admin: everything. Branch manager: students of their branch. Teacher: students in their batches.
+    var scope = isAdmin ? null : isBranch ? branchStudentIds_(staff.Branch) : teacherStudentIds_(staff.Email);   // null = everything
     function inScope(id) { return !scope || scope[id]; }
     switch (a) {
       case 'adminMe': return out_({ ok: true, user: staffPublic_(staff) });
       case 'staffData':
-        // Teachers get names and scores only – no phone, email, reg. no. or access dates.
+        // Teachers get names and scores only – no phone, email, reg. no. or access dates. Branch managers see their branch in full.
         return out_({ ok: true, user: staffPublic_(staff),
-          students: read_('Students').filter(function (r) { return inScope(r.ID) && (isAdmin || r.Status === 'Active'); }).map(isAdmin ? adminStudent_ : teacherStudent_),
-          results: read_('Results').filter(function (r) { return inScope(r.StudentID); }).map(isAdmin ? stripRow_ : teacherResult_),
-          writing: read_('Writing').filter(function (r) { return inScope(r.StudentID); }).map(isAdmin ? stripRow_ : teacherWriting_),
-          batches: read_('Batches').filter(function (b) { return isAdmin || lower_(b.TeacherEmail) === lower_(staff.Email); }).map(stripRow_),
-          staff: isAdmin ? read_('Admins').map(staffPublic_) : [staffPublic_(staff)] });
+          students: read_('Students').filter(function (r) { return inScope(r.ID) && (isMgr || r.Status === 'Active'); }).map(isMgr ? adminStudent_ : teacherStudent_),
+          results: read_('Results').filter(function (r) { return inScope(r.StudentID); }).map(isMgr ? stripRow_ : teacherResult_),
+          writing: read_('Writing').filter(function (r) { return inScope(r.StudentID); }).map(isMgr ? stripRow_ : teacherWriting_),
+          batches: read_('Batches').filter(function (b) { return isAdmin || (isBranch ? b.Branch === staff.Branch : lower_(b.TeacherEmail) === lower_(staff.Email)); }).map(stripRow_),
+          staff: isAdmin ? read_('Admins').map(staffPublic_) : isBranch ? read_('Admins').filter(function (r) { return lower_(r.Email) === lower_(staff.Email) || (role_(r) === 'Teacher' && yes_(r.Active)); }).map(staffPublic_) : [staffPublic_(staff)] });
       // backwards compatible with v1 panel
-      case 'listStudents': return out_({ ok: true, data: read_('Students').filter(function (r) { return inScope(r.ID); }).map(isAdmin ? adminStudent_ : teacherStudent_) });
-      case 'listResults': return out_({ ok: true, data: read_('Results').filter(function (r) { return inScope(r.StudentID); }).map(isAdmin ? stripRow_ : teacherResult_) });
-      case 'listWriting': return out_({ ok: true, data: read_('Writing').filter(function (r) { return inScope(r.StudentID); }).map(isAdmin ? stripRow_ : teacherWriting_) });
+      case 'listStudents': return out_({ ok: true, data: read_('Students').filter(function (r) { return inScope(r.ID); }).map(isMgr ? adminStudent_ : teacherStudent_) });
+      case 'listResults': return out_({ ok: true, data: read_('Results').filter(function (r) { return inScope(r.StudentID); }).map(isMgr ? stripRow_ : teacherResult_) });
+      case 'listWriting': return out_({ ok: true, data: read_('Writing').filter(function (r) { return inScope(r.StudentID); }).map(isMgr ? stripRow_ : teacherWriting_) });
       case 'markWriting': return out_(markWriting_(p, staff, scope));
       case 'changeStaffPassword': return out_(changeStaffPassword_(staff, p));
     }
-    if (!isAdmin) return out_({ ok: false, error: 'Only an admin can do this.' });
+    if (!isMgr) return out_({ ok: false, error: 'Only an admin can do this.' });
+    if (isBranch) {   // branch managers: only their own branch's students and batches; no staff or emails
+      if (['saveStaff', 'resetStaffPassword', 'emailReports'].indexOf(a) >= 0) return out_({ ok: false, error: 'Only the main admin can do this.' });
+      var sids = [].concat(p.ids || p.id || []);
+      if (['approve', 'setBatch', 'reject', 'block', 'renew', 'resetPassword'].indexOf(a) >= 0 && (!sids.length || !sids.every(function (x) { return inScope(x); }))) return out_({ ok: false, error: 'This student is not in your branch.' });
+      if (p.batchId && !read_('Batches').some(function (b) { return b.ID === p.batchId && b.Branch === staff.Branch; })) return out_({ ok: false, error: 'Please choose a batch from your branch.' });
+      if (a === 'saveBatch') {
+        if (p.id && !read_('Batches').some(function (b) { return b.ID === p.id && b.Branch === staff.Branch; })) return out_({ ok: false, error: 'This batch is not in your branch.' });
+        p.branch = staff.Branch;
+      }
+    }
     switch (a) {
       case 'approve': return out_(approve_(p, staff));
       case 'setBatch': return out_(setBatch_(p));
@@ -281,27 +292,29 @@ function adminLogin_(p) {
   return { ok: true, token: newSession_('admin', email, ADMIN_SESSION_HOURS), user: staffPublic_(a) };
 }
 
-function saveStaff_(email, name, role, pw) {
+function saveStaff_(email, name, role, pw, branch) {
   var found = read_('Admins').filter(function (r) { return lower_(r.Email) === email; })[0];
-  var f = { Name: name, Active: 'Yes', Role: role };
+  var f = { Name: name, Active: 'Yes', Role: role, Branch: branch || '' };
   if (pw) { f.Salt = random_(16); f.Hash = hash_(pw, f.Salt); }
   if (found) setRow_('Admins', found._row, f);
   else appendObj_('Admins', Object.assign({ Email: email, Created: new Date() }, f));
 }
 
 function saveStaffFromPanel_(p, admin) {
-  var email = lower_(p.email), name = clean_(p.name), role = p.role === 'Admin' ? 'Admin' : 'Teacher';
+  var email = lower_(p.email), name = clean_(p.name), role = ['Admin', 'Branch'].indexOf(p.role) >= 0 ? p.role : 'Teacher';
+  var branch = role === 'Branch' ? clean_(p.branch) : '';
+  if (role === 'Branch' && BRANCHES.indexOf(branch) < 0) return bad_('Please choose the branch for this branch manager.');
   if (!/^\S+@\S+\.\S+$/.test(email)) return bad_('Please enter a valid email.');
   if (name.length < 2) return bad_('Please enter the name.');
   var found = read_('Admins').filter(function (r) { return lower_(r.Email) === email; })[0];
   if (found && lower_(found.Email) === lower_(admin.Email) && p.active === false) return bad_('You cannot turn off your own account.');
   if (found) {
-    setRow_('Admins', found._row, { Name: name, Role: role, Active: p.active === false ? 'No' : 'Yes' });
+    setRow_('Admins', found._row, { Name: name, Role: role, Branch: branch, Active: p.active === false ? 'No' : 'Yes' });
     if (p.active === false) endUserSessions_(email);
     return { ok: true };
   }
   var pw = tempPassword_();
-  saveStaff_(email, name, role, pw);
+  saveStaff_(email, name, role, pw, branch);
   return { ok: true, password: pw };
 }
 
@@ -322,6 +335,11 @@ function changeStaffPassword_(staff, p) {
   return { ok: true };
 }
 
+function branchStudentIds_(branch) {
+  var ids = {}; if (!branch) return ids;
+  read_('Students').forEach(function (s) { if (s.Branch === branch) ids[s.ID] = 1; });
+  return ids;
+}
 function teacherStudentIds_(email) {
   var mine = {}; read_('Batches').forEach(function (b) { if (lower_(b.TeacherEmail) === lower_(email)) mine[b.ID] = 1; });
   var ids = {}; read_('Students').forEach(function (s) { if (s.BatchID && mine[s.BatchID]) ids[s.ID] = 1; });
@@ -417,6 +435,13 @@ function sendTeacherReports() {
     if (!who) return;
     MailApp.sendEmail({ to: email, subject: 'DMI Diploma in English – weekly batch report',
       htmlBody: reportHtml_('Hello ' + (who.Name || '') + ',', byTeacher[email]) });
+    sent++;
+  });
+  staff.filter(function (s) { return yes_(s.Active) && role_(s) === 'Branch'; }).forEach(function (m) {
+    var mine = all.filter(function (x) { return x.b.Branch === m.Branch; });
+    if (!mine.length) return;
+    MailApp.sendEmail({ to: m.Email, subject: 'DMI Diploma in English – weekly report (' + m.Branch + ' branch)',
+      htmlBody: reportHtml_('Hello ' + (m.Name || '') + ', here are the ' + m.Branch + ' batches:', mine) });
     sent++;
   });
   staff.filter(function (s) { return yes_(s.Active) && role_(s) === 'Admin'; }).forEach(function (a) {
@@ -612,8 +637,8 @@ function pick_(r, keys) { var o = {}; keys.forEach(function (k) { o[k] = r[k]; }
 function teacherStudent_(r) { var o = pick_(r, ['ID', 'Name', 'BatchID', 'Status']); o.State = r.Status === 'Active' && expired_(r.Expiry) ? 'Expired' : r.Status; return o; }
 function teacherResult_(r) { return pick_(r, ['StudentID', 'Name', 'Time', 'Skill', 'Level', 'Test', 'Score', 'Max', 'Percent']); }
 function teacherWriting_(r) { return pick_(r, ['ID', 'StudentID', 'Name', 'Time', 'Level', 'TaskID', 'Task', 'Words', 'Text', 'AIBand', 'AIFeedback', 'TeacherMark', 'TeacherComment', 'MarkedBy']); }
-function staffPublic_(r) { return { email: lower_(r.Email), name: r.Name, role: role_(r), active: yes_(r.Active), hasPassword: !!r.Hash }; }
-function role_(r) { return /^teacher$/i.test(String(r.Role || '').trim()) ? 'Teacher' : 'Admin'; }
+function staffPublic_(r) { var ro = role_(r); return { email: lower_(r.Email), name: r.Name, role: ro, branch: ro === 'Branch' ? (r.Branch || '') : '', active: yes_(r.Active), hasPassword: !!r.Hash }; }
+function role_(r) { var x = String(r.Role || '').trim(); return /^teacher$/i.test(x) ? 'Teacher' : /^branch/i.test(x) ? 'Branch' : 'Admin'; }
 function yes_(v) { return /^(yes|true|y|1)$/i.test(String(v).trim()); }
 function stripRow_(r) { var o = {}; Object.keys(r).forEach(function (k) { if (k !== '_row' && k !== 'Salt' && k !== 'Hash') o[k] = r[k]; }); return o; }
 function mobile_(m) {

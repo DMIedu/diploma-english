@@ -22,7 +22,10 @@ function ago(d) { if (!d) return '—'; var x = new Date(d); if (isNaN(x)) retur
 function badge(s) { return '<span class="badge ' + ({ Active: 'ok', Pending: 'warn', Expired: 'grey', Rejected: 'bad', Blocked: 'bad', Admin: 'grey', Teacher: 'ok', Off: 'bad' }[s] || 'grey') + '">' + esc(s) + '</span>'; }
 function toast(m, bad) { var d = document.createElement('div'); d.className = 'msg ' + (bad ? 'bad' : 'ok'); d.setAttribute('role', 'status'); d.style.cssText = 'position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:40;box-shadow:0 6px 20px rgba(0,0,0,.2)'; d.textContent = m; document.body.appendChild(d); setTimeout(function () { d.remove(); }, 3500); }
 function modal(html) { var d = document.createElement('div'); d.className = 'modal'; d.innerHTML = '<div class="card" role="dialog" aria-modal="true">' + html + '</div>'; document.body.appendChild(d); var f = d.querySelector('button,input,select'); if (f) f.focus(); return d; }
-function isAdmin() { return ME && ME.role === 'Admin'; }
+function isAdmin() { return ME && (ME.role === 'Admin' || ME.role === 'Branch'); }   /* admin or branch manager: full student details */
+function isHead() { return ME && ME.role === 'Admin'; }
+function isBranch() { return ME && ME.role === 'Branch'; }
+function roleName(r) { return r === 'Branch' ? 'Branch manager' : r; }
 function pctBar(p) { if (p == null) return '<span class="muted">—</span>'; return '<span class="pct">' + p + '%</span><div class="bar2 ' + (p >= 60 ? '' : p >= 30 ? 'mid' : 'low') + '" aria-hidden="true"><i style="width:' + Math.min(100, p) + '%"></i></div>'; }
 function batchById(id) { return D.batches.filter(function (b) { return b.ID === id; })[0]; }
 function staffByEmail(e) { return D.staff.filter(function (s) { return s.email === String(e || '').toLowerCase(); })[0]; }
@@ -61,9 +64,11 @@ function studentSum(id) {
     var rs = R.filter(function (r) { return r.Skill === k; }), best = {};
     rs.forEach(function (r) { best[r.Test] = Math.max(best[r.Test] || 0, Number(r.Percent) || 0); });
     var b = Object.keys(best).map(function (t) { return best[t]; });
-    s[k] = { attempts: rs.length, tests: b.length, avgBest: b.length ? Math.round(b.reduce(function (a, x) { return a + x; }, 0) / b.length) : null, best: best };
+    s[k] = { attempts: rs.length, tests: b.length, avgBest: b.length ? Math.round(b.reduce(function (a, x) { return a + x; }, 0) / b.length) : null, best: best,
+             first: rs.length ? Number(rs[rs.length - 1].Percent) || 0 : null, latest: rs.length ? Number(rs[0].Percent) || 0 : null };
   });
-  s.Writing = { sent: W.length, marked: W.filter(function (w) { return w.TeacherMark !== '' && w.TeacherMark != null; }).length };
+  var wa = W.map(function (w) { var x = /^(\d+)\/100$/.exec(w.AIBand || ''); return x ? +x[1] : null; }).filter(function (x) { return x != null; });
+  s.Writing = { sent: W.length, marked: W.filter(function (w) { return w.TeacherMark !== '' && w.TeacherMark != null; }).length, first: wa.length ? wa[wa.length - 1] : null, latest: wa.length ? wa[0] : null };
   if (R[0]) s.last = R[0].Time; if (W[0] && (!s.last || new Date(W[0].Time) > new Date(s.last))) s.last = W[0].Time;
   return s;
 }
@@ -71,7 +76,7 @@ function studentSum(id) {
 /* ---------- auth & shell ---------- */
 function login(msg) {
   ME = null; $('nav').hidden = true; $('who').innerHTML = '';
-  app.innerHTML = '<main class="wrap"><form class="card" id="lf" style="max-width:420px;margin:30px auto;border:2px solid var(--ink)" novalidate><h2>Staff sign-in</h2><p class="muted" style="margin-top:0">For DMI admins and teachers.</p><label for="le">Email</label><input type="email" id="le" autocomplete="username"><label for="lp">Password</label><input type="password" id="lp" autocomplete="current-password"><div class="err" id="lerr" role="alert">' + esc(msg || '') + '</div><button class="btn pri" style="width:100%" id="lb">Sign in</button></form></main>';
+  app.innerHTML = '<main class="wrap"><form class="card" id="lf" style="max-width:420px;margin:30px auto;border:2px solid var(--ink)" novalidate><h2>Staff sign-in</h2><p class="muted" style="margin-top:0">For DMI admins, branch managers and teachers.</p><label for="le">Email</label><input type="email" id="le" autocomplete="username"><label for="lp">Password</label><input type="password" id="lp" autocomplete="current-password"><div class="err" id="lerr" role="alert">' + esc(msg || '') + '</div><button class="btn pri" style="width:100%" id="lb">Sign in</button></form></main>';
   $('lf').onsubmit = function (e) {
     e.preventDefault(); $('lb').disabled = true;
     call('adminLogin', { email: $('le').value, password: $('lp').value }).then(function (r) {
@@ -81,11 +86,11 @@ function login(msg) {
   };
 }
 function start() {
-  $('ptitle').textContent = isAdmin() ? 'Admin panel' : 'Teacher panel';
-  $('who').innerHTML = '<b>' + esc(ME.name || ME.email) + '</b><span>' + esc(ME.role) + ' · <a href="#" id="pwl" style="color:#ffe600">Password</a> · <a href="#" id="lo" style="color:#ffe600">Sign out</a></span>';
+  $('ptitle').textContent = isHead() ? 'Admin panel' : isBranch() ? 'Branch panel · ' + (ME.branch || '') : 'Teacher panel';
+  $('who').innerHTML = '<b>' + esc(ME.name || ME.email) + '</b><span>' + esc(roleName(ME.role)) + (isBranch() ? ' · ' + esc(ME.branch || '') : '') + ' · <a href="#" id="pwl" style="color:#ffe600">Password</a> · <a href="#" id="lo" style="color:#ffe600">Sign out</a></span>';
   $('lo').onclick = function (e) { e.preventDefault(); call('logout').then(function () { try { sessionStorage.removeItem(TK); } catch (e) {} login(); }); };
   $('pwl').onclick = function (e) { e.preventDefault(); changePw(); };
-  var items = isAdmin() ? [['dash', 'Dashboard'], ['apps', 'Applications <span id="pc"></span>'], ['students', 'Students'], ['batches', 'Batches'], ['results', 'Results'], ['writing', 'Writing <span id="wcnt"></span>'], ['staff', 'Staff']]
+  var items = isAdmin() ? [['dash', 'Dashboard'], ['apps', 'Applications <span id="pc"></span>'], ['students', 'Students'], ['batches', 'Batches'], ['results', 'Results'], ['writing', 'Writing <span id="wcnt"></span>']].concat(isHead() ? [['staff', 'Staff']] : [])
                         : [['dash', 'My batches'], ['students', 'My students'], ['writing', 'Writing <span id="wcnt"></span>']];
   $('navin').innerHTML = items.map(function (i) { return '<a href="#' + i[0] + '" data-r="' + i[0] + '">' + i[1] + '</a>'; }).join('');
   $('nav').hidden = false; loadAll().then(route);
@@ -106,7 +111,7 @@ function route() {
   var p = decodeURIComponent(location.hash.slice(1) || 'dash').split('/'), r = p[0];
   Array.prototype.forEach.call(document.querySelectorAll('#navin a'), function (a) { a.classList.toggle('on', a.dataset.r === r || (r === 'batch' && a.dataset.r === 'dash') || (r === 'student' && a.dataset.r === 'students')); });
   var V = { dash: dash, batch: batchView, student: studentView, apps: apps, students: students, batches: batches, results: results, writing: writing, staff: staffView }[r] || dash;
-  if (!isAdmin() && ['apps', 'batches', 'staff', 'results'].indexOf(r) >= 0) V = dash;
+  if ((!isAdmin() && ['apps', 'batches', 'staff', 'results'].indexOf(r) >= 0) || (!isHead() && r === 'staff')) V = dash;
   window.scrollTo(0, 0); V(p[1]);
 }
 window.addEventListener('hashchange', route);
@@ -135,14 +140,14 @@ function dash() {
   var noBatch = activeStudents(function (s) { return !s.BatchID || !batchById(s.BatchID); });
   var pend = D.students.filter(function (s) { return s.Status === 'Pending'; }).length;
   var toMark = D.writing.filter(function (w) { return w.TeacherMark === '' || w.TeacherMark == null; }).length;
-  var h = '<main class="wrap"><h2>' + (isAdmin() ? 'Dashboard' : 'My batches') + '</h2><div class="cards">' +
+  var h = '<main class="wrap"><h2>' + (isHead() ? 'Dashboard' : isBranch() ? esc(ME.branch || '') + ' branch' : 'My batches') + '</h2><div class="cards">' +
     '<div class="stat"><b>' + activeStudents().length + '</b><span>active students</span></div>' +
     (isAdmin() ? '<a class="stat' + (pend ? ' warn' : '') + '" href="#apps" style="text-decoration:none"><b>' + pend + '</b><span>applications waiting</span></a>' : '') +
     '<div class="stat"><b>' + mine.length + '</b><span>batches</span></div>' +
     '<div class="stat"><b>' + act7 + '</b><span>tests taken in the last 7 days</span></div>' +
     '<a class="stat' + (toMark ? ' warn' : '') + '" href="#writing" style="text-decoration:none"><b>' + toMark + '</b><span>writing to mark</span></a>' +
     (isAdmin() && noBatch.length ? '<a class="stat warn" href="#students/nobatch" style="text-decoration:none"><b>' + noBatch.length + '</b><span>active students with no batch — assign them</span></a>' : '') + '</div>';
-  h += '<div class="bar" style="justify-content:space-between"><h3 style="margin:0">Batches · % of students who practised each skill</h3>' + (isAdmin() ? '<button class="btn sm" id="mail">✉ Email teachers their report now</button>' : '') + '</div>';
+  h += '<div class="bar" style="justify-content:space-between"><h3 style="margin:0">Batches · % of students who practised each skill</h3>' + (isHead() ? '<button class="btn sm" id="mail">✉ Email teachers their report now</button>' : '') + '</div>';
   if (!mine.length) h += '<div class="card muted">' + (isAdmin() ? 'No batches yet. <a href="#batches">Create your first batch</a>, then assign students to it.' : 'No batches are assigned to you yet. Please ask the admin.') + '</div>';
   else {
     h += '<div class="tbl"><table class="t"><thead><tr><th>Batch</th><th>Teacher</th><th>Students</th><th>Active this week</th>' + SKILLS.map(function (k) { return '<th>' + k + '</th>'; }).join('') + '</tr></thead><tbody>';
@@ -186,10 +191,11 @@ function studentView(id) {
     (!isAdmin() ? '' : '<div class="split"><div class="card"><div class="kv"><span>Reg. no.</span><b>' + esc(s.RegNo || '—') + '</b><span>Mobile</span><b>' + esc(s.Mobile) + '</b><span>Email</span><b>' + esc(s.Email || '—') + '</b><span>Branch</span><b>' + esc(s.Branch) + '</b><span>Course</span><b>' + esc(s.Course) + '</b><span>Batch</span><b>' + (b ? esc(b.Name) + ' · ' + esc(teacherName(b)) : '<span style="color:var(--bad)">No batch</span>') + '</b><span>Access until</span><b>' + fd(s.Expiry) + '</b><span>Last sign-in</span><b>' + fdt(s.LastLogin) + '</b><span>Last practice</span><b>' + ago(m.last) + '</b></div></div>' +
     (isAdmin() ? '<div class="card"><h3>Admin</h3><label for="sb">Batch</label><div class="bar" style="margin:0"><select id="sb">' + batchOptions(s.BatchID, '— No batch —') + '</select><button class="btn sm pri" id="sbs">Save batch</button></div><div class="acts" style="margin-top:14px">' +
       (s.State !== 'Pending' && s.State !== 'Rejected' ? '<button class="btn sm pri" data-a="renew">+3 months access</button><button class="btn sm" data-a="reset">Reset password</button>' : '') + (s.State !== 'Blocked' && s.State !== 'Rejected' ? '<button class="btn sm red" data-a="block">Block</button>' : '') + '</div></div>' : '') + '</div>');
+  function prog(x) { if (x.first == null || x.attempts < 2 && !(x.sent > 1)) return ''; var d = x.latest - x.first; return '<span class="sub" style="color:' + (d > 0 ? 'var(--ok)' : d < 0 ? 'var(--bad)' : 'var(--muted)') + ';font-weight:700">First ' + x.first + '% → latest ' + x.latest + '% (' + (d > 0 ? '▲ +' : d < 0 ? '▼ ' : '') + d + ')</span>'; }
   h += '<h3 style="margin-top:22px">Summary</h3><div class="cards">' +
-    ['Vocabulary', 'Listening', 'Reading'].map(function (k) { var x = m[k]; return '<div class="stat"><span>' + k + '</span><b>' + (x.avgBest == null ? '—' : x.avgBest + '%') + '</b><span>' + x.tests + ' test' + (x.tests === 1 ? '' : 's') + ' · ' + x.attempts + ' attempt' + (x.attempts === 1 ? '' : 's') + '</span></div>'; }).join('') +
+    ['Vocabulary', 'Listening', 'Reading'].map(function (k) { var x = m[k]; return '<div class="stat"><span>' + k + '</span><b>' + (x.avgBest == null ? '—' : x.avgBest + '%') + '</b><span>' + x.tests + ' test' + (x.tests === 1 ? '' : 's') + ' · ' + x.attempts + ' attempt' + (x.attempts === 1 ? '' : 's') + '</span>' + prog(x) + '</div>'; }).join('') +
     '<div class="stat"><span>Speaking</span><b>' + m.Speaking.tests + '</b><span>units practised</span></div>' +
-    '<div class="stat"><span>Writing</span><b>' + m.Writing.sent + '</b><span>sent · ' + m.Writing.marked + ' marked</span></div></div>';
+    '<div class="stat"><span>Writing</span><b>' + m.Writing.sent + '</b><span>sent · ' + m.Writing.marked + ' marked' + (m.Writing.latest != null ? ' · latest AI ' + m.Writing.latest + '/100' : '') + '</span>' + prog(m.Writing) + '</div></div>';
   h += '<h3>Vocabulary tests</h3><div class="tbl"><table class="t"><thead><tr><th>Test</th><th>Best</th><th>Attempts</th></tr></thead><tbody>' + VT.map(function (t) { var n = m.R.filter(function (r) { return r.Test === t; }).length; return '<tr><td>' + esc(t) + '</td><td>' + (m.Vocabulary.best[t] != null ? '<b>' + m.Vocabulary.best[t] + '%</b>' : '<span class="muted">not taken</span>') + '</td><td>' + n + '</td></tr>'; }).join('') + '</tbody></table></div>';
   h += '<h3 style="margin-top:22px">Every attempt</h3>' + (m.R.length ? '<div class="tbl"><table class="t"><thead><tr><th>Date</th><th>Skill</th><th>Test</th><th>Marks</th><th>%</th><th>Minutes</th></tr></thead><tbody>' + m.R.map(function (r) { return '<tr><td>' + fdt(r.Time) + '</td><td>' + esc(r.Skill) + '</td><td>' + esc(r.Test) + '</td><td>' + esc(r.Score) + ' / ' + esc(r.Max) + '</td><td><b>' + esc(r.Percent) + '%</b></td><td>' + esc(r.Minutes) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted">No tests yet.</p>');
   h += '<h3 style="margin-top:22px">Writing</h3>' + (m.W.length ? m.W.map(function (w) { return '<details class="card" style="margin-bottom:8px"><summary style="cursor:pointer"><b>' + fdt(w.Time) + '</b> · ' + esc(w.Level) + ' · ' + esc(w.Task) + ' · ' + esc(w.Words) + ' words · ' + (w.TeacherMark !== '' && w.TeacherMark != null ? badge('Marked ' + w.TeacherMark) : badge('To mark')) + '</summary><div class="passage" style="font-size:15px">' + esc(w.Text) + '</div>' + (w.TeacherComment ? '<p><b>Comment:</b> ' + esc(w.TeacherComment) + '</p>' : '') + '<a href="#writing">Mark in Writing →</a></details>'; }).join('') : '<p class="muted">No writing yet.</p>');
@@ -231,7 +237,7 @@ function apps() {
 /* ---------- students ---------- */
 function students(pre) {
   if (!isAdmin()) return teacherStudents();
-  var h = '<main class="wrap"><h2>' + (isAdmin() ? 'Students' : 'My students') + '</h2><div class="bar"><input type="search" id="sq" placeholder="Search name, mobile or reg. no." aria-label="Search students"><select id="sbr" aria-label="Branch"><option value="">All branches</option>' + C.BRANCHES.map(function (b) { return '<option>' + b + '</option>'; }).join('') + '</select><select id="sbt" aria-label="Batch"><option value="">All batches</option>' + (isAdmin() ? '<option value="__none"' + (pre === 'nobatch' ? ' selected' : '') + '>No batch</option>' : '') + batchOptions('') + '</select>' +
+  var h = '<main class="wrap"><h2>' + (isAdmin() ? 'Students' : 'My students') + '</h2><div class="bar"><input type="search" id="sq" placeholder="Search name, mobile or reg. no." aria-label="Search students"><select id="sbr" aria-label="Branch"' + (isBranch() ? ' hidden' : '') + '><option value="">All branches</option>' + C.BRANCHES.map(function (b) { return '<option>' + b + '</option>'; }).join('') + '</select><select id="sbt" aria-label="Batch"><option value="">All batches</option>' + (isAdmin() ? '<option value="__none"' + (pre === 'nobatch' ? ' selected' : '') + '>No batch</option>' : '') + batchOptions('') + '</select>' +
     (isAdmin() ? '<select id="sst" aria-label="Status"><option value="">All statuses</option><option selected>Active</option><option>Expired</option><option>Pending</option><option>Blocked</option><option>Rejected</option></select>' : '') + '</div>' +
     (isAdmin() ? '<div class="bar" id="bulk" hidden style="background:var(--y2);padding:8px 12px;border-radius:10px"><b id="selN"></b><select id="mvb" aria-label="Move to batch" style="max-width:320px">' + batchOptions('', 'Move selected to batch…') + '</select><button class="btn sm pri" id="mv">Move</button></div>' : '') + '<div id="sl"></div></main>';
   app.innerHTML = h;
@@ -275,10 +281,10 @@ function batches() {
     b = b || {};
     return '<form class="card inline" id="bf" novalidate style="margin-bottom:16px"><input type="hidden" id="bid" value="' + esc(b.ID || '') + '"><div style="grid-column:1/-1"><h3 style="margin:0">' + (b.ID ? 'Edit batch' : 'New batch') + '</h3></div>' +
       '<div><label for="bn">Batch name</label><input type="text" id="bn" value="' + esc(b.Name || '') + '" placeholder="e.g. KN-DE-Nov26-A" maxlength="60"></div>' +
-      '<div><label for="bb">Branch</label><select id="bb">' + C.BRANCHES.map(function (x) { return '<option' + (x === b.Branch ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
+      '<div><label for="bb">Branch</label><select id="bb"' + (isBranch() ? ' disabled' : '') + '>' + (isBranch() ? ['' + ME.branch] : C.BRANCHES).map(function (x) { return '<option' + (x === b.Branch ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
       '<div><label for="bc">Course</label><select id="bc">' + C.COURSES.map(function (x) { return '<option' + (x === (b.Course || 'Diploma in English') ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
       '<div><label for="bs">Class time</label><input type="text" id="bs" value="' + esc(b.Schedule || '') + '" placeholder="e.g. Sat & Sun 9–11 am" maxlength="80"></div>' +
-      '<div><label for="bt">Teacher</label><select id="bt"><option value="">— choose —</option>' + teachers.map(function (t) { return '<option value="' + esc(t.email) + '"' + (t.email === String(b.TeacherEmail || '').toLowerCase() ? ' selected' : '') + '>' + esc(t.name) + ' (' + t.role + ')</option>'; }).join('') + '</select></div>' +
+      '<div><label for="bt">Teacher</label><select id="bt"><option value="">— choose —</option>' + teachers.map(function (t) { return '<option value="' + esc(t.email) + '"' + (t.email === String(b.TeacherEmail || '').toLowerCase() ? ' selected' : '') + '>' + esc(t.name) + ' (' + roleName(t.role) + ')</option>'; }).join('') + '</select></div>' +
       '<div><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="ba"' + (b.Active === 'No' ? '' : ' checked') + '> Batch is running</label></div>' +
       '<div class="err" id="be" role="alert" style="grid-column:1/-1"></div><div class="acts" style="grid-column:1/-1"><button class="btn pri" id="bsv">' + (b.ID ? 'Save changes' : 'Create batch') + '</button>' + (b.ID ? '<button class="btn" type="button" id="bcx">Cancel</button>' : '') + '</div></form>';
   }
@@ -302,26 +308,29 @@ function batches() {
 
 /* ---------- staff ---------- */
 function staffView() {
-  app.innerHTML = '<main class="wrap"><h2>Staff</h2><p class="muted" style="margin-top:0">Teachers sign in on this same page and only see their own batches. When you add someone, a password is shown once — give it to them.</p>' +
-    '<form class="card inline" id="sf" novalidate style="margin-bottom:16px"><div style="grid-column:1/-1"><h3 style="margin:0">Add a teacher or admin</h3></div><div><label for="se">Email</label><input type="email" id="se" autocomplete="off"></div><div><label for="sn">Name</label><input type="text" id="sn" maxlength="60"></div><div><label for="sr">Role</label><select id="sr"><option>Teacher</option><option>Admin</option></select></div><div><button class="btn pri" id="ss" style="width:100%">Add</button></div><div class="err" id="ser" role="alert" style="grid-column:1/-1"></div></form>' +
-    '<div class="tbl"><table class="t"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Batches</th><th>Status</th><th>Action</th></tr></thead><tbody>' + D.staff.map(function (s) {
+  app.innerHTML = '<main class="wrap"><h2>Staff</h2><p class="muted" style="margin-top:0">Everyone signs in on this same page. <b>Teachers</b> see only their own batches: student names and progress, no phone numbers or emails. <b>Branch managers</b> see and manage only their branch\'s students and batches. When you add someone, a password is shown once — give it to them.</p>' +
+    '<form class="card inline" id="sf" novalidate style="margin-bottom:16px"><div style="grid-column:1/-1"><h3 style="margin:0">Add a teacher, branch manager or admin</h3></div><div><label for="se">Email</label><input type="email" id="se" autocomplete="off"></div><div><label for="sn">Name</label><input type="text" id="sn" maxlength="60"></div><div><label for="sr">Role</label><select id="sr"><option value="Teacher">Teacher</option><option value="Branch">Branch manager</option><option value="Admin">Admin</option></select></div><div id="sbw" hidden><label for="sbx">Branch</label><select id="sbx"><option value="">— choose —</option>' + C.BRANCHES.map(function (b) { return '<option>' + b + '</option>'; }).join('') + '</select></div><div><button class="btn pri" id="ss" style="width:100%">Add</button></div><div class="err" id="ser" role="alert" style="grid-column:1/-1"></div></form>' +
+    '<div class="tbl"><table class="t"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Branch / batches</th><th>Status</th><th>Action</th></tr></thead><tbody>' + D.staff.map(function (s) {
       var nb = D.batches.filter(function (b) { return String(b.TeacherEmail).toLowerCase() === s.email; }).map(function (b) { return esc(b.Name); }).join(', ');
       var me = s.email === ME.email;
-      return '<tr><td><b>' + esc(s.name) + '</b>' + (me ? ' <span class="muted">(you)</span>' : '') + '</td><td>' + esc(s.email) + '</td><td>' + badge(s.role) + '</td><td>' + (nb || '<span class="muted">none</span>') + '</td><td>' + (s.active ? badge('Active') : badge('Off')) + (s.hasPassword ? '' : ' <span class="badge warn">no password</span>') + '</td><td class="acts">' +
-        (me ? '' : '<button class="btn sm" data-rp="' + esc(s.email) + '">New password</button><button class="btn sm' + (s.active ? ' red' : '') + '" data-tg="' + esc(s.email) + '">' + (s.active ? 'Turn off' : 'Turn on') + '</button><button class="btn sm" data-rl="' + esc(s.email) + '">Make ' + (s.role === 'Admin' ? 'teacher' : 'admin') + '</button>') + '</td></tr>';
+      return '<tr><td><b>' + esc(s.name) + '</b>' + (me ? ' <span class="muted">(you)</span>' : '') + '</td><td>' + esc(s.email) + '</td><td>' + badge(roleName(s.role)) + '</td><td>' + (s.role === 'Branch' ? '<b>' + esc(s.branch || '—') + '</b>' : s.role === 'Admin' ? '<span class="muted">all</span>' : (nb || '<span class="muted">none</span>')) + '</td><td>' + (s.active ? badge('Active') : badge('Off')) + (s.hasPassword ? '' : ' <span class="badge warn">no password</span>') + '</td><td class="acts">' +
+        (me ? '' : '<button class="btn sm" data-rp="' + esc(s.email) + '">New password</button><button class="btn sm' + (s.active ? ' red' : '') + '" data-tg="' + esc(s.email) + '">' + (s.active ? 'Turn off' : 'Turn on') + '</button><select data-rl="' + esc(s.email) + '" aria-label="Change role" style="width:auto;padding:6px 8px;font-size:14px"><option value="">Change role…</option>' + ['Teacher', 'Admin'].concat(C.BRANCHES.map(function (b) { return 'Branch:' + b; })).map(function (v) { return '<option value="' + v + '">' + (v.indexOf('Branch:') === 0 ? 'Branch manager – ' + v.slice(7) : v) + '</option>'; }).join('') + '</select>') + '</td></tr>';
     }).join('') + '</tbody></table></div></main>';
   $('sf').onsubmit = function (e) {
     e.preventDefault(); var em = $('se').value.trim().toLowerCase(), nm = $('sn').value.trim();
     if (!/^\S+@\S+\.\S+$/.test(em)) { $('ser').textContent = 'Enter a valid email.'; return; } if (nm.length < 2) { $('ser').textContent = 'Enter the name.'; return; }
     if (staffByEmail(em)) { $('ser').textContent = 'This email is already on the list.'; return; }
+    if ($('sr').value === 'Branch' && !$('sbx').value) { $('ser').textContent = 'Choose the branch for this branch manager.'; return; }
     $('ss').disabled = true;
-    call('saveStaff', { email: em, name: nm, role: $('sr').value }).then(function (r) { $('ss').disabled = false; if (!r.ok) { $('ser').textContent = r.error; return; } loadAll().then(function () { route(); if (r.password) showPassword('Password for ' + nm, r.password, nm + ' (' + em + ')'); }); });
+    call('saveStaff', { email: em, name: nm, role: $('sr').value, branch: $('sbx').value }).then(function (r) { $('ss').disabled = false; if (!r.ok) { $('ser').textContent = r.error; return; } loadAll().then(function () { route(); if (r.password) showPassword('Password for ' + nm, r.password, nm + ' (' + em + ')'); }); });
   };
+  $('sr').onchange = function () { $('sbw').hidden = this.value !== 'Branch'; };
+  app.onchange = function (e) { var x = e.target.closest('[data-rl]'); if (!x || !x.value) return; var s = staffByEmail(x.dataset.rl), v = x.value, ro = v.indexOf('Branch:') === 0 ? 'Branch' : v, br = ro === 'Branch' ? v.slice(7) : '';
+    if (confirm('Change ' + s.name + ' to ' + (ro === 'Branch' ? 'Branch manager – ' + br : ro) + '?')) act('saveStaff', { email: s.email, name: s.name, role: ro, branch: br, active: s.active }, 'Role changed.'); else x.value = ''; };
   app.onclick = function (e) {
-    var x = e.target.closest('[data-rp],[data-tg],[data-rl]'); if (!x) return; var s = staffByEmail(x.dataset.rp || x.dataset.tg || x.dataset.rl);
+    var x = e.target.closest('[data-rp],[data-tg]'); if (!x) return; var s = staffByEmail(x.dataset.rp || x.dataset.tg);
     if (x.dataset.rp && confirm('Make a new password for ' + s.name + '? Their old password stops working.')) call('resetStaffPassword', { email: s.email }).then(function (r) { if (!r.ok) { toast(r.error, true); return; } showPassword('New password for ' + s.name, r.password, s.name); });
-    if (x.dataset.tg) act('saveStaff', { email: s.email, name: s.name, role: s.role, active: !s.active }, s.active ? 'Turned off.' : 'Turned on.');
-    if (x.dataset.rl && confirm('Change ' + s.name + ' to ' + (s.role === 'Admin' ? 'Teacher' : 'Admin') + '?')) act('saveStaff', { email: s.email, name: s.name, role: s.role === 'Admin' ? 'Teacher' : 'Admin', active: s.active }, 'Role changed.');
+    if (x.dataset.tg) act('saveStaff', { email: s.email, name: s.name, role: s.role, branch: s.branch, active: !s.active }, s.active ? 'Turned off.' : 'Turned on.');
   };
 }
 
