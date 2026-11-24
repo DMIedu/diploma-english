@@ -87,7 +87,7 @@ window.addEventListener('beforeunload', function (e) { if (EXAM && !EXAM.done) {
 /* ---------------- shell ---------------- */
 function header() {
   var exp = ME.expiry ? new Date(ME.expiry) : null, days = exp ? Math.ceil((exp - Date.now()) / 864e5) : null;
-  $('who').innerHTML = '<b>' + esc(ME.name || '') + '</b><span>' + esc([ME.regNo, ME.branch].filter(Boolean).join(' · ')) + '</span>' +
+  $('who').innerHTML = '<b>' + esc(ME.name || '') + '</b><span>' + esc([ME.regNo, ME.batch || ME.branch].filter(Boolean).join(' · ')) + '</span>' +
     (days !== null && days <= 14 ? '<br><span class="badge warn">Access ends in ' + Math.max(days, 0) + ' day' + (days === 1 ? '' : 's') + '</span>' : '');
 }
 header();
@@ -126,8 +126,8 @@ function home(x, y, fresh) {
     tile('#vocab', '📚', 'Vocabulary', '856 verbs with Tamil meanings · ' + done('Vocabulary') + ' / 4 tests taken', true) +
     tile('#listening', '🎧', 'Listening', '40 papers, A1–B2 · ' + done('Listening') + ' / 40 taken') +
     tile('#reading', '📖', 'Reading', 'A1–B2 reading papers · ' + done('Reading') + ' taken') +
-    tile('#writing', '✍️', 'Writing', '11 tasks with feedback · ' + DATA.writing.length + ' sent') +
-    tile('#speaking', '🗣️', 'Speaking', '40 speaking units · listen and record') +
+    tile('#writing', '✍️', 'Writing', '24 tasks · AI marks · ' + DATA.writing.length + ' sent') +
+    tile('#speaking', '🗣️', 'Speaking', '40 speaking units · ' + done('Speaking') + ' practised') +
     tile('#results', '📊', 'My results', DATA.results.length + ' marks recorded') +
     '</div><h3 style="margin-top:28px">Recent marks</h3>' +
     (recent.length ? resultsTable(recent) : '<p class="muted">No marks yet. Start with a vocabulary test or a listening paper.</p>') + '</main>';
@@ -442,24 +442,59 @@ function writing(lv) {
   var L = curLevel(lv); loading();
   load('assets/data/writing.js').then(function () {
     var T = window.DMI_WRITING[L] || [];
-    app.innerHTML = '<main class="wrap"><div class="eyebrow">Small writing tasks</div><h2>Writing</h2><p class="muted" style="margin-top:0">Write your answer, get instant AI feedback, and it is sent to your teacher to mark.</p>' +
+    app.innerHTML = '<main class="wrap"><div class="eyebrow">Writing practice</div><h2>Writing</h2><p class="muted" style="margin-top:0">Choose a task, write your answer, and get it marked out of 100 by AI in seconds. Then see the corrections, an improved version and a model answer. Your teacher also sees your work.</p>' +
       levelChips(L, 'writing') + '<div class="grid" style="margin-top:16px">' + T.map(function (t) {
-        var subs = DATA.writing.filter(function (w) { return w.taskId === t.id; }), marked = subs.filter(function (w) { return w.mark !== '' && w.mark != null; })[0];
-        return '<a class="tile' + (subs.length ? ' done' : '') + '" href="#wtask/' + L + '/' + t.id + '"><span class="badge' + (subs.length ? ' ok' : ' grey') + '">' + (marked ? 'Teacher mark: ' + esc(marked.mark) : subs.length ? subs.length + ' sent' : t.minWords + '–' + t.maxWords + ' words') + '</span><b>' + esc(t.title.replace(/^Task \d+:\s*/, '')) + '</b><span>' + esc(t.prompt.slice(0, 90)) + '…</span></a>';
+        var subs = DATA.writing.filter(function (w) { return w.taskId === t.id; }), best = bestAi(subs), marked = subs.filter(function (w) { return w.mark !== '' && w.mark != null; })[0];
+        var badge = marked ? 'Teacher: ' + esc(marked.mark) : best != null ? 'Best AI mark ' + best + '/100' : subs.length ? subs.length + ' sent' : t.minWords + '–' + t.maxWords + ' words';
+        return '<a class="tile' + (subs.length ? ' done' : '') + '" href="#wtask/' + L + '/' + t.id + '"><span class="badge' + (subs.length ? ' ok' : ' grey') + '">' + badge + '</span><span class="wtype">' + esc(t.type || '') + '</span><b>' + esc(t.title) + '</b><span>' + esc(t.prompt.slice(0, 95)) + (t.prompt.length > 95 ? '…' : '') + '</span></a>';
       }).join('') + '</div></main>';
   }, failLoad);
 }
-function fbHtml(s) {
+function bestAi(subs) { var b = null; subs.forEach(function (w) { var m = /^(\d+)\/100$/.exec(w.aiBand || ''); if (m && (b == null || +m[1] > b)) b = +m[1]; }); return b; }
+function words(s) { return String(s || '').trim().match(/\S+/g) || []; }
+/* word-level difference: red = remove, green = add */
+function diffHtml(a, b) {
+  var tk = function (t) { return String(t || '').replace(/\r/g, '').split(/[ \t]+|(?=\n)|(?<=\n)/).filter(function (w) { return w !== ''; }); };
+  var x = tk(a), y = tk(b), n = x.length, m = y.length;
+  if (!m || n * m > 250000) return esc(b);
+  var norm = function (w) { return w.toLowerCase(); }, D = [], i, j;
+  for (i = 0; i <= n; i++) { D.push(new Uint16Array(m + 1)); }
+  for (i = n - 1; i >= 0; i--) for (j = m - 1; j >= 0; j--) D[i][j] = x[i] === y[j] ? D[i + 1][j + 1] + 1 : Math.max(D[i + 1][j], D[i][j + 1]);
+  var out = [], dl = [], ad = [];
+  function flush() { if (dl.length) out.push('<del>' + esc(dl.join(' ').replace(/\n/g, ' ')) + '</del>'); if (ad.length) out.push('<ins>' + esc(ad.join(' ').replace(/\n/g, ' ')) + '</ins>'); dl = []; ad = []; }
+  i = 0; j = 0;
+  while (i < n && j < m) {
+    if (x[i] === y[j]) { flush(); out.push(esc(x[i])); i++; j++; }
+    else if (D[i + 1][j] >= D[i][j + 1]) dl.push(x[i++]); else ad.push(y[j++]);
+  }
+  while (i < n) dl.push(x[i++]); while (j < m) ad.push(y[j++]); flush();
+  return out.join(' ').replace(/ ?\n ?/g, '<br>');
+}
+var WPARTS = [['task', 'Task & content'], ['organisation', 'Organisation'], ['grammar', 'Grammar'], ['vocabulary', 'Vocabulary'], ['spelling', 'Spelling & punctuation']];
+function fbHtml(s, text, t, open) {
   var j; try { j = typeof s === 'string' ? JSON.parse(s) : s; } catch (e) { return ''; }
   if (!j) return '';
   if (j.note) return '<div class="msg warn">' + esc(j.note) + '</div>';
-  var h = '<div class="card fb" style="border:2px solid var(--ink)"><div class="eyebrow">AI feedback (practice guide only)</div>' + (j.estimatedBand ? '<h3>' + esc(j.estimatedBand) + (j.cefrLevel ? ' · ' + esc(j.cefrLevel) : '') + '</h3>' : '') +
-    (j.taskAchievement ? '<p>' + esc(j.taskAchievement) + '</p>' : '');
-  if (j.strengths && j.strengths.length) h += '<h4>👍 What you did well</h4><ul>' + j.strengths.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
-  if (j.corrections && j.corrections.length) h += '<h4>✏️ Corrections</h4><ul>' + j.corrections.map(function (x) { return '<li><s>' + esc(x.original) + '</s> → <b>' + esc(x.corrected) + '</b>' + (x.rule ? '<br><span class="muted">' + esc(x.rule) + '</span>' : '') + '</li>'; }).join('') + '</ul>';
-  if (j.vocabularyTips && j.vocabularyTips.length) h += '<h4>📚 Better words</h4><ul>' + j.vocabularyTips.map(function (x) { return '<li><b>' + esc(x.word) + '</b>' + (x.insteadOf ? ' instead of “' + esc(x.insteadOf) + '”' : '') + (x.example ? '<br><i>' + esc(x.example) + '</i>' : '') + '</li>'; }).join('') + '</ul>';
-  if (j.teacherAdvice) h += '<h4>💡 Advice</h4><p>' + esc(j.teacherAdvice) + '</p>';
-  return h + '</div>';
+  if (!j.scores) { /* older feedback */
+    var h0 = '<div class="card fb"><div class="eyebrow">AI feedback</div>' + (j.estimatedBand ? '<h3>' + esc(j.estimatedBand) + '</h3>' : '') + (j.taskAchievement ? '<p>' + esc(j.taskAchievement) + '</p>' : '');
+    if (j.corrections && j.corrections.length) h0 += '<ul>' + j.corrections.map(function (x) { return '<li><s>' + esc(x.original) + '</s> → <b>' + esc(x.corrected) + '</b></li>'; }).join('') + '</ul>';
+    return h0 + '</div>';
+  }
+  var tot = j.total, tone = tot >= 75 ? 'ok' : tot >= 50 ? 'mid' : 'low';
+  var h = '<div class="wres"><div class="wscore ' + tone + '"><div><div class="eyebrow">AI mark</div><div class="big">' + tot + '<small>/100</small></div></div><div style="flex:1;min-width:200px">' +
+    (j.levelReached ? '<span class="badge">Level shown: ' + esc(j.levelReached) + '</span> ' : '') + (j.words ? '<span class="badge grey">' + esc(j.words) + ' words</span>' : '') +
+    '<p style="margin:8px 0 0">' + esc(j.summary || '') + '</p></div></div>';
+  h += '<div class="wbars">' + WPARTS.map(function (p) { var v = (j.scores || {})[p[0]] || 0; return '<div class="wbar"><span>' + p[1] + '</span><div class="track"><i style="width:' + (v * 5) + '%"></i></div><b>' + v + '/20</b></div>'; }).join('') + '</div>';
+  if (j.points && j.points.length) h += '<h4>Did you include everything?</h4><ul class="wpts">' + j.points.map(function (x) { return '<li class="' + (x.covered ? 'y' : 'n') + '">' + (x.covered ? '✓ ' : '✗ ') + esc(x.point) + '</li>'; }).join('') + '</ul>';
+  if (j.strengths && j.strengths.length) h += '<h4>What you did well</h4><ul>' + j.strengths.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
+  if (j.corrections && j.corrections.length) h += '<h4>Corrections (' + j.corrections.length + ')</h4><ol class="wcorr">' + j.corrections.map(function (x) {
+    return '<li><div><del>' + esc(x.original) + '</del> → <ins>' + esc(x.corrected) + '</ins>' + (x.type ? ' <span class="wtag">' + esc(x.type) + '</span>' : '') + '</div>' + (x.explain ? '<div class="muted">' + esc(x.explain) + '</div>' : '') + '</li>'; }).join('') + '</ol>';
+  else h += '<div class="msg ok">No mistakes found. Excellent!</div>';
+  if (j.correctedText) h += '<details class="card"' + (open ? ' open' : '') + '><summary>Your writing, corrected <span class="muted">(<del>red</del> = remove, <ins>green</ins> = add)</span></summary><div class="passage wdiff">' + (text ? diffHtml(text, j.correctedText) : esc(j.correctedText)) + '</div></details>';
+  if (j.improvedVersion) h += '<details class="card"><summary>Improved version of your answer</summary><div class="passage" style="white-space:pre-line">' + esc(j.improvedVersion) + '</div></details>';
+  if (t && t.modelAnswer) h += '<details class="card"><summary>Model answer</summary><div class="passage" style="white-space:pre-line">' + esc(t.modelAnswer) + '</div><p class="muted" style="margin:6px 0 0">' + (t.modelWords || '') + ' words</p></details>';
+  if (j.nextSteps && j.nextSteps.length) h += '<h4>Practise next</h4><ul>' + j.nextSteps.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
+  return h + '<p class="muted" style="font-size:13px">AI marks are a practice guide. Your teacher gives the final mark.</p></div>';
 }
 function wtask(lv, id) {
   var L = curLevel(lv); loading();
@@ -467,29 +502,37 @@ function wtask(lv, id) {
     var t = (window.DMI_WRITING[L] || []).filter(function (x) { return x.id === id; })[0];
     if (!t) { location.hash = '#writing/' + L; return; }
     var dk = 'dmi_de_draft_' + t.id, subs = DATA.writing.filter(function (w) { return w.taskId === t.id; }).sort(function (a, b) { return new Date(b.time) - new Date(a.time); });
-    app.innerHTML = '<main class="wrap"><a href="#writing/' + L + '" class="muted">← All ' + L + ' tasks</a><div class="eyebrow" style="margin-top:8px">' + L + ' writing</div><h2>' + esc(t.title) + '</h2>' +
-      '<div class="split"><section><div class="card" style="border-left:6px solid var(--y)"><p style="font-size:17px;margin-top:0"><b>' + esc(t.prompt) + '</b></p><p class="muted" style="margin:0">Write <b>' + t.minWords + '–' + t.maxWords + ' words</b>.</p></div>' +
-      (t.tips && t.tips.length ? '<h4>Tips</h4><ul>' + t.tips.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '') +
-      '<label for="wt">Your answer</label><textarea id="wt" spellcheck="false"></textarea><div class="bar" style="justify-content:space-between"><span id="wc" class="muted" style="font-weight:700"></span><span class="muted" style="font-size:13px">Your draft is saved on this device.</span></div>' +
-      '<div class="err" id="we" role="alert"></div><div class="row" style="justify-content:flex-start"><button class="btn pri" id="wai">Get AI feedback & send to teacher</button><button class="btn" id="wsend">Send to teacher only</button></div></section>' +
-      '<section><div id="wfb"></div><div id="wmodel"></div><h3>Your earlier answers</h3><div id="wold">' + (subs.length ? subs.map(function (w) {
-        return '<details class="card" style="margin-bottom:10px"><summary style="cursor:pointer"><b>' + fdt(w.time) + '</b> · ' + esc(w.words) + ' words' + (w.mark !== '' && w.mark != null ? ' · <span class="badge ok">Teacher: ' + esc(w.mark) + '</span>' : ' · <span class="badge grey">Waiting for teacher</span>') + '</summary>' +
-          (w.comment ? '<div class="msg ok">Teacher: ' + esc(w.comment) + '</div>' : '') + fbHtml(w.aiFeedback) + '</details>';
-      }).join('') : '<p class="muted">Nothing sent yet.</p>') + '</div></section></div></main>';
+    var li = function (a) { return (a || []).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join(''); };
+    app.innerHTML = '<main class="wrap"><a href="#writing/' + L + '" class="muted">← All ' + L + ' tasks</a><div class="eyebrow" style="margin-top:8px">' + L + ' writing · ' + esc(t.type || '') + '</div><h2>' + esc(t.title) + '</h2>' +
+      '<div class="split"><section><div class="card" style="border-left:6px solid var(--y)"><p style="font-size:17px;margin-top:0"><b>' + esc(t.prompt) + '</b></p>' +
+      (t.points && t.points.length ? '<p style="margin:0 0 4px">In your answer, include:</p><ul style="margin:0 0 8px">' + li(t.points) + '</ul>' : '') +
+      '<p class="muted" style="margin:0">Write <b>' + t.minWords + '–' + t.maxWords + ' words</b>.</p></div>' +
+      (t.plan && t.plan.length ? '<details class="card"><summary>Plan your answer</summary><ol style="margin:8px 0 0">' + li(t.plan) + '</ol></details>' : '') +
+      (t.phrases && t.phrases.length ? '<details class="card"><summary>Useful phrases</summary><ul style="margin:8px 0 0">' + li(t.phrases) + '</ul></details>' : '') +
+      (t.tips && t.tips.length ? '<details class="card"><summary>Tips</summary><ul style="margin:8px 0 0">' + li(t.tips) + '</ul></details>' : '') +
+      '<label for="wt" style="margin-top:12px">Your answer</label><textarea id="wt" spellcheck="false" rows="12"></textarea><div class="bar" style="justify-content:space-between"><span id="wc" class="muted" style="font-weight:700"></span><span class="muted" style="font-size:13px">Your draft is saved on this device.</span></div>' +
+      '<div class="err" id="we" role="alert"></div><div class="row" style="justify-content:flex-start"><button class="btn pri" id="wai">Check with AI & send to teacher</button><button class="btn" id="wsend">Send to teacher only</button></div></section>' +
+      '<section><div id="wfb"></div><h3>Your earlier answers</h3><div id="wold">' + (subs.length ? subs.map(function (w) {
+        return '<details class="card" style="margin-bottom:10px"><summary><b>' + fdt(w.time) + '</b> · ' + esc(w.words) + ' words' + (w.aiBand ? ' · AI ' + esc(w.aiBand) : '') + (w.mark !== '' && w.mark != null ? ' · <span class="badge ok">Teacher: ' + esc(w.mark) + '</span>' : ' · <span class="badge grey">Waiting for teacher</span>') + '</summary>' +
+          (w.comment ? '<div class="msg ok">Teacher: ' + esc(w.comment) + '</div>' : '') + (w.text ? '<div class="passage" style="white-space:pre-line">' + esc(w.text) + '</div>' : '') + fbHtml(w.aiFeedback, w.text, t) + '</details>';
+      }).join('') : '<p class="muted">Nothing sent yet. Write your answer, then check it with AI.</p>') + '</div></section></div></main>';
     var ta = $('wt'); ta.value = ls(dk) || '';
-    function count() { var n = (ta.value.trim().match(/\S+/g) || []).length; $('wc').textContent = n + ' words (target ' + t.minWords + '–' + t.maxWords + ')'; $('wc').style.color = n >= t.minWords && n <= t.maxWords ? 'var(--ok)' : ''; ls(dk, ta.value); return n; }
+    function count() { var n = words(ta.value).length; $('wc').textContent = n + ' words (target ' + t.minWords + '–' + t.maxWords + ')'; $('wc').style.color = n >= t.minWords && n <= t.maxWords ? 'var(--ok)' : ''; ls(dk, ta.value); return n; }
     ta.oninput = count; count();
     function send(ai) {
       var n = count(); if (n < Math.min(10, t.minWords)) { $('we').textContent = 'Please write at least ' + Math.min(10, t.minWords) + ' words.'; return; }
-      $('we').textContent = ''; $('wai').disabled = $('wsend').disabled = true; $('wfb').innerHTML = '<div class="msg warn">' + (ai ? 'Sending and checking your writing… this can take up to 30 seconds.' : 'Sending…') + '</div>';
-      A.call('submitWriting', { level: L, taskId: t.id, task: t.title, prompt: t.prompt, text: ta.value, wantAI: ai }).then(function (r) {
+      var text = ta.value;
+      $('we').textContent = ''; $('wai').disabled = $('wsend').disabled = true; $('wfb').innerHTML = '<div class="msg warn">' + (ai ? 'Checking your writing… this can take up to 30 seconds.' : 'Sending…') + '</div>';
+      A.call('submitWriting', { level: L, taskId: t.id, task: t.title, type: t.type, prompt: t.prompt, points: t.points, minWords: t.minWords, maxWords: t.maxWords, text: text, wantAI: ai }).then(function (r) {
         $('wai').disabled = $('wsend').disabled = false;
         if (authFail(r)) return;
         if (!r.ok) { $('wfb').innerHTML = '<div class="msg bad">' + esc(r.error) + '</div>'; return; }
-        $('wfb').innerHTML = '<div class="msg ok">✓ Sent to your teacher.</div>' + (ai ? fbHtml(r.aiFeedback) : '');
-        if (t.modelAnswer) $('wmodel').innerHTML = '<details class="card" style="margin:10px 0"><summary style="cursor:pointer;font-weight:700">See a model answer</summary><p style="line-height:1.7">' + esc(t.modelAnswer) + '</p></details>';
-        DATA.writing.push({ time: new Date().toISOString(), level: L, taskId: t.id, task: t.title, words: n, aiBand: r.aiBand, aiFeedback: r.aiFeedback, mark: '', comment: '' });
-        ls(dk, '');
+        $('wfb').innerHTML = '<div class="msg ok">✓ Sent to your teacher.</div>' + (ai ? fbHtml(r.aiFeedback, text, t, true) : (t.modelAnswer ? '<details class="card" open><summary>Model answer</summary><div class="passage" style="white-space:pre-line">' + esc(t.modelAnswer) + '</div></details>' : '')) +
+          '<p><button class="btn" id="wagain">Improve it and try again</button></p>';
+        $('wagain').onclick = function () { ta.focus(); ta.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+        $('wfb').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (/Nothing sent yet/.test($('wold').textContent)) $('wold').innerHTML = '<p class="muted">Your answers appear here next time you open this task.</p>';
+        DATA.writing.push({ time: new Date().toISOString(), level: L, taskId: t.id, task: t.title, words: n, text: text, aiBand: r.aiBand, aiFeedback: r.aiFeedback, mark: '', comment: '' });
       });
     }
     $('wai').onclick = function () { send(true); }; $('wsend').onclick = function () { send(false); };
@@ -503,7 +546,8 @@ function speaking() {
     var U = window.DMI_SPEAKING;
     app.innerHTML = '<main class="wrap"><div class="eyebrow">Spoken English · units 41–80</div><h2>Speaking</h2><p class="muted" style="margin-top:0">Listen to the questions, record your answer, and play it back to check yourself. Recordings stay on your phone or computer.</p>' +
       '<div class="msg warn">🤖 The AI speaking tutor is coming soon to this hub.</div><div class="grid" style="margin-top:12px">' + U.map(function (u) {
-        return '<a class="tile" href="#sunit/' + u.unitNumber + '"><span class="badge grey">Unit ' + u.unitNumber + '</span><b>' + esc(u.title) + '</b><span>' + esc(u.level) + '</span></a>';
+        var dn = best('Speaking', 'Speaking Unit ' + u.unitNumber) !== null;
+        return '<a class="tile' + (dn ? ' done' : '') + '" href="#sunit/' + u.unitNumber + '"><span class="badge ' + (dn ? 'ok' : 'grey') + '">' + (dn ? '✓ ' : '') + 'Unit ' + u.unitNumber + '</span><b>' + esc(u.title) + '</b><span>' + esc(u.level) + '</span></a>';
       }).join('') + '</div></main>';
   }, failLoad);
 }
@@ -519,7 +563,14 @@ function sunit(n) {
       '<h3 style="margin-top:20px">Key words</h3><div class="chips">' + (u.keyVocabulary || []).map(function (k) { return '<button class="chip" data-say="' + esc(k) + '">🔊 ' + esc(k) + '</button>'; }).join('') + '</div></section>' +
       '<section><h3>Answer the questions</h3><p class="muted" style="margin-top:0">Listen, then press Record and answer in 2–3 full sentences.</p>' + (u.suggestedQuestions || []).map(function (q, i) {
         return '<div class="qq"><p class="t">' + (i + 1) + '. ' + esc(q) + '</p><div class="row" style="justify-content:flex-start;margin-top:6px"><button class="btn sm" data-say="' + esc(q) + '">🔊 Listen</button><button class="btn sm pri" data-rec="' + i + '">🎙 Record answer</button></div><div id="pb' + i + '"></div></div>';
-      }).join('') + '<div id="micErr" class="err" role="alert"></div></section></div></main>';
+      }).join('') + '<div id="micErr" class="err" role="alert"></div>' +
+      '<div class="card" style="margin-top:12px;border:2px solid var(--ink)"><b>Finished this unit?</b><p class="muted" style="margin:4px 0 10px">Record your answers, listen to yourself, then mark the unit as practised. Your teacher can see it.</p><button class="btn pri" id="sdone" disabled>✓ Mark unit ' + u.unitNumber + ' as practised</button> <span id="sst" class="muted"></span></div></section></div></main>';
+    var recorded = {}, uname = 'Speaking Unit ' + u.unitNumber, prevDone = best('Speaking', uname);
+    if (prevDone !== null) $('sst').textContent = '✓ Already practised before — you can do it again.';
+    $('sdone').onclick = function () {
+      var n = Object.keys(recorded).length, q = (u.suggestedQuestions || []).length || 1; this.disabled = true;
+      saveResult({ skill: 'Speaking', level: u.level, test: uname, score: Math.min(n, q), max: q, detail: n + ' of ' + q + ' questions recorded' }, null).then(function () { $('sst').textContent = '✓ Saved. Well done!'; });
+    };
     $('sd').onclick = function () { speak(lines.join('. '), 0.9); };
     app.onclick = function (e) {
       var s = e.target.closest('[data-say]'); if (s) { speak(s.dataset.say, 0.85); return; }
@@ -537,6 +588,7 @@ function sunit(n) {
           r.textContent = '🎙 Record again'; r.classList.add('pri'); r.classList.remove('red');
           var url = URL.createObjectURL(new Blob(chunks, { type: mr.mimeType || 'audio/webm' }));
           $('pb' + i).innerHTML = '<audio controls src="' + url + '" style="width:100%;margin-top:8px"></audio>';
+          recorded[i] = 1; if ($('sdone')) $('sdone').disabled = false;
         };
         mr.start();
       }).catch(function () { $('micErr').textContent = 'Microphone permission was not given. Allow the microphone in your browser settings and try again.'; });
@@ -549,7 +601,7 @@ function results(x, y, fresh) {
   if (FIRST) { FIRST = false; fresh = true; }
   if (!fresh) refresh().then(function (r) { if (r && r.ok && location.hash === '#results') results(null, null, true); });
   var list = DATA.results.slice().sort(function (a, b) { return new Date(b.time) - new Date(a.time); });
-  var skills = ['All', 'Vocabulary', 'Listening', 'Reading'];
+  var skills = ['All', 'Vocabulary', 'Listening', 'Reading', 'Speaking'];
   app.innerHTML = '<main class="wrap"><h2>My results</h2><div class="chips" id="rf">' + skills.map(function (s, i) { return '<button class="chip' + (i ? '' : ' on') + '" data-s="' + s + '">' + s + '</button>'; }).join('') + '</div><div id="rt" style="margin-top:12px"></div>' +
     '<h3 style="margin-top:26px">Writing</h3>' + (DATA.writing.length ? '<div class="tbl"><table class="t"><thead><tr><th>Date</th><th>Task</th><th>Words</th><th>AI band</th><th>Teacher mark</th><th>Teacher comment</th></tr></thead><tbody>' +
       DATA.writing.slice().sort(function (a, b) { return new Date(b.time) - new Date(a.time); }).map(function (w) { return '<tr><td>' + fdt(w.time) + '</td><td>' + esc(w.level) + ' · ' + esc(w.task) + '</td><td>' + esc(w.words) + '</td><td>' + esc(w.aiBand || '—') + '</td><td>' + (w.mark !== '' && w.mark != null ? '<b>' + esc(w.mark) + '</b>' : '<span class="muted">waiting</span>') + '</td><td>' + esc(w.comment || '') + '</td></tr>'; }).join('') +
@@ -560,7 +612,7 @@ function results(x, y, fresh) {
 }
 function account() {
   app.innerHTML = '<main class="wrap"><h2>My account</h2><div class="split"><div class="card"><table class="t"><tbody>' +
-    [['Name', ME.name], ['Mobile', ME.mobile], ['Email', ME.email || '—'], ['Registration no.', ME.regNo || '—'], ['Branch', ME.branch], ['Course', ME.course], ['Access until', fdate(ME.expiry)]]
+    [['Name', ME.name], ['Mobile', ME.mobile], ['Email', ME.email || '—'], ['Registration no.', ME.regNo || '—'], ['Branch', ME.branch], ['Course', ME.course], ['Batch', ME.batch || '—'], ['Class time', ME.schedule || '—'], ['Teacher', ME.teacher || '—'], ['Access until', fdate(ME.expiry)]]
       .map(function (r) { return '<tr><th style="position:static">' + r[0] + '</th><td>' + esc(r[1]) + '</td></tr>'; }).join('') +
     '</tbody></table><p class="muted" style="font-size:13.5px">To change these details or renew access, contact your DMI branch.</p><button class="btn red" id="out">Sign out</button></div>' +
     '<form class="card" id="pw" novalidate><h3>Change password</h3><label for="op">Current password</label><input type="password" id="op" autocomplete="current-password"><label for="np">New password</label><input type="password" id="np" autocomplete="new-password"><label for="np2">Type it again</label><input type="password" id="np2" autocomplete="new-password"><div class="err" id="pe" role="alert"></div><button class="btn pri" id="pb">Change password</button></form></div></main>';

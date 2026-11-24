@@ -4,135 +4,43 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Admin – DMI Diploma in English Hub</title>
+<title>Staff panel – DMI Diploma in English Hub</title>
 <link rel="icon" href="assets/dmi-logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/style.css">
-<style>.count{background:var(--bad);color:#fff;border-radius:999px;padding:0 7px;font-size:12px;margin-left:4px}.acts{display:flex;gap:6px;flex-wrap:wrap}</style>
+<style>
+.count{background:var(--bad);color:#fff;border-radius:999px;padding:0 7px;font-size:12px;margin-left:4px}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin:14px 0}
+.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px}
+.stat b{display:block;font-size:28px;line-height:1.1}
+.stat span{font-size:13px;color:var(--muted)}
+.stat.warn{border-color:#f0a500;background:#fff8e6}
+.pct{display:inline-block;min-width:44px;font-weight:800}
+.bar2{height:8px;background:#ece8db;border-radius:6px;overflow:hidden;margin-top:4px;min-width:60px}
+.bar2 i{display:block;height:100%;background:var(--ok)}
+.bar2.mid i{background:#f0a500}.bar2.low i{background:var(--bad)}
+.sub{font-size:12px;color:var(--muted);display:block}
+a.rowlink{font-weight:700;text-decoration:none;border-bottom:1.5px solid var(--y)}
+a.rowlink:hover{background:var(--y2)}
+.skill{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px}
+.skill h4{margin:0 0 6px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:14px}
+.kv span{color:var(--muted)}
+form.inline{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:0 12px;align-items:end}
+tr.sel{background:var(--y2)}
+</style>
 </head>
 <body>
 <header class="top"><div class="in">
   <a href="index.html"><img src="assets/dmi-logo.png" alt="DMI Computer Education – hub home"></a>
-  <div><small>DIPLOMA IN ENGLISH</small><h1>Admin panel</h1></div>
+  <div><small>DIPLOMA IN ENGLISH</small><h1 id="ptitle">Staff panel</h1></div>
   <div class="who" id="who"></div>
 </div></header>
-<nav class="nav" id="nav" hidden aria-label="Admin sections"><div class="in">
-  <a href="#apps" data-r="apps">Applications <span id="pc"></span></a>
-  <a href="#students" data-r="students">Students</a>
-  <a href="#results" data-r="results">Results</a>
-  <a href="#writing" data-r="writing">Writing to mark <span id="wcnt"></span></a>
-</div></nav>
+<nav class="nav" id="nav" hidden aria-label="Staff sections"><div class="in" id="navin"></div></nav>
 <div id="app"><div class="loading">Loading…</div></div>
 <script src="assets/config.js"></script>
-<script src="assets/api.js"></script>
-<script>
-(function(){
-'use strict';
-var C=DMI_CONFIG,app=document.getElementById('app'),$=function(i){return document.getElementById(i)};
-var TK='dmi_de_admin',D={students:[],results:[],writing:[]},ME=null;
-function tok(){try{return sessionStorage.getItem(TK)||''}catch(e){return ''}}
-function call(a,d){if(!C.API_URL)return Promise.resolve({ok:false,error:'API_URL is not set in assets/config.js.'});
-  return fetch(C.API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({},d||{},{action:a,token:tok()}))})
-  .then(function(r){return r.json()}).catch(function(){return{ok:false,error:'No connection.'}}).then(function(r){if(r.code==='AUTH'){try{sessionStorage.removeItem(TK)}catch(e){}login(r.error)}return r})}
-function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
-function pad(n){return(n<10?'0':'')+n}
-function fd(d){if(!d)return'';var x=new Date(d);return isNaN(x)?esc(d):x.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
-function fdt(d){var x=new Date(d);return isNaN(x)?'':fd(x)+' '+pad(x.getHours())+':'+pad(x.getMinutes())}
-function badge(s){return '<span class="badge '+({Active:'ok',Pending:'warn',Expired:'grey',Rejected:'bad',Blocked:'bad'}[s]||'grey')+'">'+esc(s)+'</span>'}
-function toast(m,bad){var d=document.createElement('div');d.className='msg '+(bad?'bad':'ok');d.setAttribute('role','status');d.style.cssText='position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:40;box-shadow:0 6px 20px rgba(0,0,0,.2)';d.textContent=m;document.body.appendChild(d);setTimeout(function(){d.remove()},3500)}
-
-function login(msg){
-  $('nav').hidden=true;$('who').innerHTML='';
-  app.innerHTML='<main class="wrap"><form class="card" id="lf" style="max-width:420px;margin:30px auto;border:2px solid var(--ink)" novalidate><h2>Staff sign-in</h2><label for="le">Email</label><input type="email" id="le" autocomplete="username"><label for="lp">Password</label><input type="password" id="lp" autocomplete="current-password"><div class="err" id="lerr" role="alert">'+esc(msg||'')+'</div><button class="btn pri" style="width:100%" id="lb">Sign in</button></form></main>';
-  $('lf').onsubmit=function(e){e.preventDefault();$('lb').disabled=true;
-    call('adminLogin',{email:$('le').value,password:$('lp').value}).then(function(r){$('lb').disabled=false;
-      if(!r.ok){$('lerr').textContent=r.error;return}
-      try{sessionStorage.setItem(TK,r.token)}catch(e){}ME=r.user;start()})};
-}
-function start(){
-  $('who').innerHTML='<b>'+esc(ME.name||ME.email)+'</b><span><a href="#" id="lo" style="color:#ffe600">Sign out</a></span>';
-  $('lo').onclick=function(e){e.preventDefault();call('logout').then(function(){try{sessionStorage.removeItem(TK)}catch(e){}login()})};
-  $('nav').hidden=false;loadAll().then(route);
-}
-function loadAll(){
-  app.innerHTML='<div class="loading">Loading…</div>';
-  return Promise.all([call('listStudents'),call('listResults'),call('listWriting')]).then(function(r){
-    if(r[0].ok)D.students=r[0].data;if(r[1].ok)D.results=r[1].data;if(r[2].ok)D.writing=r[2].data;
-    var p=D.students.filter(function(s){return s.Status==='Pending'}).length,w=D.writing.filter(function(x){return x.TeacherMark===''||x.TeacherMark==null}).length;
-    $('pc').innerHTML=p?'<span class="count">'+p+'</span>':'';$('wcnt').innerHTML=w?'<span class="count">'+w+'</span>':'';
-  });
-}
-function route(){
-  app.onclick=null;
-  var r=(location.hash.slice(1)||'apps').split('/')[0];
-  Array.prototype.forEach.call(document.querySelectorAll('#nav a'),function(a){a.classList.toggle('on',a.dataset.r===r)});
-  ({apps:apps,students:students,results:results,writing:writing}[r]||apps)();
-}
-window.addEventListener('hashchange',function(){if(ME)route()});
-
-function act(a,d,okMsg){return call(a,d).then(function(r){if(!r.ok){toast(r.error||'Failed',true);return r}if(okMsg)toast(okMsg);return loadAll().then(function(){route();return r})})}
-
-function apps(){
-  var P=D.students.filter(function(s){return s.Status==='Pending'}).sort(function(a,b){return new Date(a.AppliedOn)-new Date(b.AppliedOn)});
-  app.innerHTML='<main class="wrap"><h2>Applications waiting</h2><p class="muted" style="margin-top:0">Approving gives <b>3 months</b> of access from today. Check the student is really enrolled before approving.</p>'+
-    (P.length?'<div class="tbl"><table class="t"><thead><tr><th>Applied</th><th>Name</th><th>Mobile</th><th>Branch</th><th>Course</th><th>Reg. no.</th><th>Action</th></tr></thead><tbody>'+P.map(function(s){
-      return '<tr><td>'+fdt(s.AppliedOn)+(s.Note?'<br><span class="muted">'+esc(s.Note)+'</span>':'')+'</td><td><b>'+esc(s.Name)+'</b>'+(s.Email?'<br><span class="muted">'+esc(s.Email)+'</span>':'')+'</td><td>'+esc(s.Mobile)+'</td><td>'+esc(s.Branch)+'</td><td>'+esc(s.Course)+'</td>'+
-        '<td><input type="text" value="'+esc(s.RegNo)+'" data-reg="'+esc(s.ID)+'" aria-label="Registration number for '+esc(s.Name)+'" style="min-width:120px;padding:6px 8px;font-size:14px"></td>'+
-        '<td class="acts"><button class="btn sm pri" data-ap="'+esc(s.ID)+'">Approve</button><button class="btn sm red" data-rj="'+esc(s.ID)+'">Reject</button></td></tr>'}).join('')+'</tbody></table></div>':'<div class="card muted">No applications waiting. 🎉</div>')+'</main>';
-  app.onclick=function(e){var b=e.target.closest('[data-ap],[data-rj]');if(!b)return;b.disabled=true;
-    if(b.dataset.ap){var reg=app.querySelector('[data-reg="'+b.dataset.ap+'"]');act('approve',{id:b.dataset.ap,regNo:reg?reg.value:undefined,days:90},'Approved — the student can sign in now.')}
-    else if(confirm('Reject this application?'))act('reject',{id:b.dataset.rj},'Application rejected.');else b.disabled=false};
-}
-function students(){
-  app.innerHTML='<main class="wrap"><h2>Students</h2><div class="bar"><input type="search" id="sq" placeholder="Search name, mobile or reg. no." aria-label="Search students"><select id="sb" aria-label="Branch"><option value="">All branches</option>'+C.BRANCHES.map(function(b){return '<option>'+b+'</option>'}).join('')+'</select><select id="ss" aria-label="Status"><option value="">All statuses</option><option>Active</option><option>Expired</option><option>Pending</option><option>Blocked</option><option>Rejected</option></select></div><div id="sl"></div></main>';
-  function draw(){var q=$('sq').value.toLowerCase(),b=$('sb').value,s=$('ss').value;
-    var L=D.students.filter(function(x){return(!b||x.Branch===b)&&(!s||x.State===s)&&(!q||[x.Name,x.Mobile,x.RegNo,x.Email].join(' ').toLowerCase().indexOf(q)>-1)});
-    $('sl').innerHTML='<p class="muted">'+L.length+' students</p><div class="tbl"><table class="t"><thead><tr><th>Name</th><th>Mobile</th><th>Reg. no.</th><th>Branch</th><th>Status</th><th>Access until</th><th>Last sign-in</th><th>Tests</th><th>Action</th></tr></thead><tbody>'+L.map(function(x){
-      var n=D.results.filter(function(r){return r.StudentID===x.ID}).length;
-      return '<tr><td><b>'+esc(x.Name)+'</b><br><span class="muted">'+esc(x.Course)+'</span></td><td>'+esc(x.Mobile)+'</td><td>'+esc(x.RegNo)+'</td><td>'+esc(x.Branch)+'</td><td>'+badge(x.State)+'</td><td>'+fd(x.Expiry)+'</td><td>'+fdt(x.LastLogin)+'</td><td>'+n+'</td><td class="acts">'+
-        (x.State==='Pending'?'<button class="btn sm pri" data-a="approve" data-id="'+esc(x.ID)+'">Approve</button>':'')+
-        (x.State==='Active'||x.State==='Expired'||x.State==='Blocked'?'<button class="btn sm pri" data-a="renew" data-id="'+esc(x.ID)+'">+3 months</button>':'')+
-        (x.State!=='Blocked'&&x.State!=='Rejected'?'<button class="btn sm" data-a="reset" data-id="'+esc(x.ID)+'">Reset password</button><button class="btn sm red" data-a="block" data-id="'+esc(x.ID)+'">Block</button>':'')+'</td></tr>'}).join('')+'</tbody></table></div>'}
-  $('sq').oninput=$('sb').onchange=$('ss').onchange=draw;draw();
-  app.onclick=function(e){var b=e.target.closest('[data-a]');if(!b)return;var id=b.dataset.id,a=b.dataset.a,s=D.students.filter(function(x){return x.ID===id})[0];
-    if(a==='approve')act('approve',{id:id,days:90},'Approved.');
-    if(a==='renew')act('renew',{id:id,days:90},'Access extended by 3 months.');
-    if(a==='block'&&confirm('Block '+s.Name+'? They will be signed out and cannot sign in.'))act('block',{id:id},'Blocked.');
-    if(a==='reset'&&confirm('Make a new password for '+s.Name+'?'))call('resetPassword',{id:id}).then(function(r){if(!r.ok){toast(r.error,true);return}
-      var d=document.createElement('div');d.className='modal';d.innerHTML='<div class="card" role="dialog" aria-modal="true"><h3>New password for '+esc(s.Name)+'</h3><p style="font-size:30px;font-weight:800;letter-spacing:3px;text-align:center">'+esc(r.password)+'</p><p class="muted">Give this to the student ('+esc(s.Mobile)+'). They can change it in <b>Account</b> after signing in. It will not be shown again.</p><button class="btn pri" id="cl">Done</button></div>';document.body.appendChild(d);$('cl').focus();$('cl').onclick=function(){d.remove()}})};
-}
-function results(){
-  var tests={};D.results.forEach(function(r){tests[r.Test]=1});
-  app.innerHTML='<main class="wrap"><h2>Results</h2><div class="bar"><input type="search" id="rq" placeholder="Search student or reg. no." aria-label="Search"><select id="rb" aria-label="Branch"><option value="">All branches</option>'+C.BRANCHES.map(function(b){return '<option>'+b+'</option>'}).join('')+'</select><select id="rs" aria-label="Skill"><option value="">All skills</option><option>Vocabulary</option><option>Listening</option><option>Reading</option></select><select id="rt" aria-label="Test"><option value="">All tests</option>'+Object.keys(tests).sort().map(function(t){return '<option>'+esc(t)+'</option>'}).join('')+'</select><label style="margin:0;display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="rbest"> Best attempt only</label><button class="btn sm" id="csv">Download CSV</button></div><div id="rl"></div></main>';
-  var cur=[];
-  function draw(){var q=$('rq').value.toLowerCase(),b=$('rb').value,s=$('rs').value,t=$('rt').value;
-    cur=D.results.filter(function(r){return(!b||r.Branch===b)&&(!s||r.Skill===s)&&(!t||r.Test===t)&&(!q||[r.Name,r.RegNo].join(' ').toLowerCase().indexOf(q)>-1)}).sort(function(a,b){return new Date(b.Time)-new Date(a.Time)});
-    if($('rbest').checked){var m={};cur.forEach(function(r){var k=r.StudentID+'|'+r.Test;if(!m[k]||Number(r.Percent)>Number(m[k].Percent))m[k]=r});cur=Object.keys(m).map(function(k){return m[k]})}
-    var avg=cur.length?Math.round(cur.reduce(function(a,r){return a+Number(r.Percent)},0)/cur.length):0;
-    $('rl').innerHTML='<p class="muted">'+cur.length+' results · average '+avg+'%</p><div class="tbl"><table class="t"><thead><tr><th>Date</th><th>Student</th><th>Branch</th><th>Test</th><th>Marks</th><th>%</th><th>Min</th><th>Detail</th></tr></thead><tbody>'+cur.slice(0,500).map(function(r){
-      return '<tr><td>'+fdt(r.Time)+'</td><td><b>'+esc(r.Name)+'</b><br><span class="muted">'+esc(r.RegNo)+'</span></td><td>'+esc(r.Branch)+'</td><td>'+esc(r.Test)+'</td><td>'+esc(r.Score)+' / '+esc(r.Max)+'</td><td><b>'+esc(r.Percent)+'%</b></td><td>'+esc(r.Minutes)+'</td><td style="max-width:280px;font-size:12.5px">'+esc(r.Detail)+'</td></tr>'}).join('')+'</tbody></table></div>'+(cur.length>500?'<p class="muted">Showing the newest 500. Use the filters or download the CSV for all.</p>':'')}
-  $('rq').oninput=$('rb').onchange=$('rs').onchange=$('rt').onchange=$('rbest').onchange=draw;draw();
-  $('csv').onclick=function(){var H=['Time','Name','RegNo','Branch','Skill','Level','Test','Score','Max','Percent','Minutes','Detail'];
-    var csv=[H.join(',')].concat(cur.map(function(r){return H.map(function(h){var v=h==='Time'?fdt(r[h]):String(r[h]==null?'':r[h]);return '"'+v.replace(/"/g,'""')+'"'}).join(',')})).join('\r\n');
-    var a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'}));a.download='dmi-diploma-results.csv';a.click()};
-}
-function fb(s){try{var j=JSON.parse(s)}catch(e){return ''}if(!j)return '';if(j.note)return '<p class="muted">'+esc(j.note)+'</p>';
-  return '<div style="font-size:14px"><b>AI: '+esc(j.estimatedBand||'')+'</b> — '+esc(j.taskAchievement||'')+(j.corrections&&j.corrections.length?'<ul>'+j.corrections.map(function(c){return '<li><s>'+esc(c.original)+'</s> → <b>'+esc(c.corrected)+'</b></li>'}).join('')+'</ul>':'')+'</div>'}
-function writing(){
-  app.innerHTML='<main class="wrap"><h2>Writing</h2><div class="chips" id="wf"><button class="chip on" data-f="todo">To mark</button><button class="chip" data-f="all">All</button></div><div id="wl" style="margin-top:12px"></div></main>';
-  var f='todo';
-  function draw(){var L=D.writing.filter(function(w){return f==='all'||w.TeacherMark===''||w.TeacherMark==null}).sort(function(a,b){return new Date(b.Time)-new Date(a.Time)});
-    $('wl').innerHTML=L.length?L.map(function(w){return '<div class="card" style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><b>'+esc(w.Name)+'</b> · '+esc(w.RegNo)+' · '+esc(w.Branch)+'<br><span class="muted">'+esc(w.Level)+' · '+esc(w.Task)+' · '+esc(w.Words)+' words · '+fdt(w.Time)+'</span></div>'+(w.TeacherMark!==''&&w.TeacherMark!=null?'<span class="badge ok">Marked '+esc(w.TeacherMark)+' by '+esc(w.MarkedBy)+'</span>':'')+'</div>'+
-      '<div class="passage" style="font-size:15px">'+esc(w.Text)+'</div>'+fb(w.AIFeedback)+
-      '<div class="bar"><input type="text" placeholder="Mark (e.g. 7/10 or Band 5)" value="'+esc(w.TeacherMark)+'" data-m="'+esc(w.ID)+'" aria-label="Mark" style="max-width:220px"><input type="text" placeholder="Comment for the student" value="'+esc(w.TeacherComment)+'" data-c="'+esc(w.ID)+'" aria-label="Comment"><button class="btn sm pri" data-save="'+esc(w.ID)+'">Save mark</button></div></div>'}).join(''):'<div class="card muted">Nothing to mark.</div>'}
-  $('wf').onclick=function(e){var b=e.target.closest('[data-f]');if(!b)return;f=b.dataset.f;Array.prototype.forEach.call(this.children,function(c){c.classList.toggle('on',c===b)});draw()};
-  app.onclick=function(e){var b=e.target.closest('[data-save]');if(!b)return;var id=b.dataset.save,m=app.querySelector('[data-m="'+id+'"]').value.trim();
-    if(!m){toast('Enter a mark first.',true);return}b.disabled=true;act('markWriting',{id:id,mark:m,comment:app.querySelector('[data-c="'+id+'"]').value},'Mark saved.')};
-  draw();
-}
-if(tok())call('adminMe').then(function(r){if(r.ok){ME=r.user;start()}else if(r.code!=='AUTH')login(r.error)});else login();
-})();
-</script>
+<script src="assets/staff.js"></script>
 </body>
 </html>
