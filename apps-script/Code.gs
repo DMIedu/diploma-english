@@ -77,7 +77,7 @@ function addAdminFromMenu() {
 
 function testAI() {
   var r = gemini_('Reply with the single word OK.');
-  SpreadsheetApp.getUi().alert(r.ok ? 'AI is working: ' + r.text.slice(0, 60) : 'AI not working: ' + r.error);
+  SpreadsheetApp.getUi().alert(r.ok ? 'AI is working (' + r.model + '): ' + r.text.slice(0, 60) : 'AI not working: ' + r.error);
 }
 
 function sendTeacherReportsFromMenu() {
@@ -529,21 +529,36 @@ function scoreWriting_(j) {
   j.corrections = j.corrections.slice(0, 12);
   return j;
 }
+var AI_MODELS = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'];
 function gemini_(prompt) {
   var props = PropertiesService.getScriptProperties();
   var key = props.getProperty('GEMINI_API_KEY');
   if (!key) return { ok: false, error: 'GEMINI_API_KEY is not set in Script properties.' };
-  var model = props.getProperty('GEMINI_MODEL') || 'gemini-2.5-flash';
+  var models = [props.getProperty('GEMINI_MODEL')].concat(AI_MODELS).filter(function (m, i, a) { return m && a.indexOf(m) === i; });
+  var last = 'AI is not available.';
+  for (var i = 0; i < models.length; i++) {
+    var r = geminiCall_(key, models[i], prompt);
+    if (r.ok) return r;
+    last = r.error;
+    if (!r.retry) break;   // a real error (bad key, bad request): don't try other models
+  }
+  return { ok: false, error: last };
+}
+function geminiCall_(key, model, prompt) {
   try {
     var res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
       method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': key },
       payload: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 8192, responseMimeType: 'application/json' } })
     });
-    var j = JSON.parse(res.getContentText());
-    if (res.getResponseCode() !== 200) return { ok: false, error: (j.error && j.error.message) || ('HTTP ' + res.getResponseCode()) };
-    var t = j.candidates && j.candidates[0] && j.candidates[0].content.parts.map(function (x) { return x.text || ''; }).join('');
-    return t ? { ok: true, text: t } : { ok: false, error: 'Empty AI reply' };
-  } catch (e) { return { ok: false, error: String(e) }; }
+    var code = res.getResponseCode(), j = {};
+    try { j = JSON.parse(res.getContentText()); } catch (e) {}
+    if (code !== 200) {
+      var msg = (j.error && j.error.message) || ('HTTP ' + code);
+      return { ok: false, error: msg, retry: code === 429 || code >= 500 || code === 404 || /demand|overload|not available|no longer|not found|unavailable/i.test(msg) };
+    }
+    var t = j.candidates && j.candidates[0] && j.candidates[0].content && (j.candidates[0].content.parts || []).map(function (x) { return x.text || ''; }).join('');
+    return t ? { ok: true, text: t, model: model } : { ok: false, error: 'Empty AI reply.', retry: true };
+  } catch (e) { return { ok: false, error: String(e), retry: true }; }
 }
 function parseJson_(t) { try { return JSON.parse(String(t).replace(/```json|```/gi, '').trim()); } catch (e) { return null; } }
 
