@@ -529,7 +529,7 @@ function scoreWriting_(j) {
   j.corrections = j.corrections.slice(0, 12);
   return j;
 }
-var AI_MODELS = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'];
+var AI_MODELS = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash-lite'];   // GEMINI_MODEL script property (if set) is tried first
 function gemini_(prompt) {
   var props = PropertiesService.getScriptProperties();
   var key = props.getProperty('GEMINI_API_KEY');
