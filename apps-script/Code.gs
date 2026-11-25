@@ -180,7 +180,7 @@ function doPost(e) {
 
 // ---------------- students ----------------
 function apply_(p) {
-  var name = clean_(p.name).replace(/\s+/g, ' '), mobile = mobile_(p.mobile), email = lower_(p.email),
+  var name = clean_(p.name).replace(/\s+/g, ' '), mobile = mobile_(p.mobile), email = String(p.email || '').trim().toLowerCase(),
       reg = clean_(p.regNo).toUpperCase(), branch = clean_(p.branch), course = clean_(p.course), pw = String(p.password || '');
   if (name.length < 3) return bad_('Please enter your full name.');
   if (!mobile) return bad_('Please enter a valid mobile number (e.g. 0771234567).');
@@ -662,7 +662,12 @@ function mobile_(m) {
   if (d.length === 9) d = '0' + d;
   return /^0\d{9}$/.test(d) ? d : '';
 }
-function lower_(s) { return String(s || '').trim().toLowerCase(); }
+// Lower-case; for Gmail addresses also drop dots before @ (Gmail ignores them: a.b@gmail.com = ab@gmail.com).
+function lower_(s) {
+  s = String(s || '').trim().toLowerCase();
+  var m = /^([^@\s]+)@(gmail\.com|googlemail\.com)$/.exec(s);
+  return m ? m[1].replace(/\./g, '') + '@gmail.com' : s;
+}
 function clean_(s) { s = String(s == null ? '' : s).trim().slice(0, 6000); return /^[=+\-@]/.test(s) ? "'" + s : s; }
 function esc_(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 function expired_(d) { return !d || new Date(d).getTime() < Date.now(); }
