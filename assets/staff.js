@@ -29,7 +29,9 @@ function roleName(r) { return r === 'Branch' ? 'Branch manager' : r; }
 function pctBar(p) { if (p == null) return '<span class="muted">—</span>'; return '<span class="pct">' + p + '%</span><div class="bar2 ' + (p >= 60 ? '' : p >= 30 ? 'mid' : 'low') + '" aria-hidden="true"><i style="width:' + Math.min(100, p) + '%"></i></div>'; }
 function batchById(id) { return D.batches.filter(function (b) { return b.ID === id; })[0]; }
 function staffByEmail(e) { return D.staff.filter(function (s) { return s.email === String(e || '').toLowerCase(); })[0]; }
-function teacherName(b) { var s = b && staffByEmail(b.TeacherEmail); return s ? s.name : (b && b.TeacherEmail) || '—'; }
+function normEmail(e) { e = String(e || '').trim().toLowerCase(); var m = /^([^@\s]+)@(gmail\.com|googlemail\.com)$/.exec(e); return m ? m[1].replace(/\./g, '') + '@gmail.com' : e; }
+function batchTeachers(b) { return [normEmail(b && b.TeacherEmail), normEmail(b && b.TeacherEmail2)].filter(function (x, i, a) { return x && a.indexOf(x) === i; }); }
+function teacherName(b) { var n = batchTeachers(b).map(function (e) { var s = staffByEmail(e); return s ? s.name : e; }); return n.length ? n.join(' & ') : '—'; }
 function batchOptions(sel, withNone) {
   return (withNone ? '<option value="">' + withNone + '</option>' : '') + D.batches.filter(function (b) { return b.Active !== 'No' || b.ID === sel; })
     .map(function (b) { return '<option value="' + esc(b.ID) + '"' + (b.ID === sel ? ' selected' : '') + '>' + esc(b.Name) + (b.Branch ? ' · ' + esc(b.Branch) : '') + (b.Schedule ? ' · ' + esc(b.Schedule) : '') + '</option>'; }).join('');
@@ -150,7 +152,7 @@ function dash() {
   h += '<div class="bar" style="justify-content:space-between"><h3 style="margin:0">Batches · % of students who practised each skill</h3>' + (isHead() ? '<button class="btn sm" id="mail">✉ Email teachers their report now</button>' : '') + '</div>';
   if (!mine.length) h += '<div class="card muted">' + (isAdmin() ? 'No batches yet. <a href="#batches">Create your first batch</a>, then assign students to it.' : 'No batches are assigned to you yet. Please ask the admin.') + '</div>';
   else {
-    h += '<div class="tbl"><table class="t"><thead><tr><th>Batch</th><th>Teacher</th><th>Students</th><th>Active this week</th>' + SKILLS.map(function (k) { return '<th>' + k + '</th>'; }).join('') + '</tr></thead><tbody>';
+    h += '<div class="tbl"><table class="t"><thead><tr><th>Batch</th><th>Teacher(s)</th><th>Students</th><th>Active this week</th>' + SKILLS.map(function (k) { return '<th>' + k + '</th>'; }).join('') + '</tr></thead><tbody>';
     mine.forEach(function (b) {
       var st = stats(activeStudents(function (s) { return s.BatchID === b.ID; }));
       h += '<tr><td><a class="rowlink" href="#batch/' + esc(b.ID) + '">' + esc(b.Name) + '</a>' + (b.Active === 'No' ? ' ' + badge('Off') : '') + '<span class="sub">' + esc([b.Branch, b.Schedule].filter(Boolean).join(' · ')) + '</span></td><td>' + esc(teacherName(b)) + '</td><td><b>' + st.n + '</b></td><td>' + pctBar(st.activeWeek) + '</td>' + skillCells(st) + '</tr>';
@@ -284,20 +286,22 @@ function batches() {
       '<div><label for="bb">Branch</label><select id="bb"' + (isBranch() ? ' disabled' : '') + '>' + (isBranch() ? ['' + ME.branch] : C.BRANCHES).map(function (x) { return '<option' + (x === b.Branch ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
       '<div><label for="bc">Course</label><select id="bc">' + C.COURSES.map(function (x) { return '<option' + (x === (b.Course || 'Diploma in English') ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
       '<div><label for="bs">Class time</label><input type="text" id="bs" value="' + esc(b.Schedule || '') + '" placeholder="e.g. Sat & Sun 9–11 am" maxlength="80"></div>' +
-      '<div><label for="bt">Teacher</label><select id="bt"><option value="">— choose —</option>' + teachers.map(function (t) { return '<option value="' + esc(t.email) + '"' + (t.email === String(b.TeacherEmail || '').toLowerCase() ? ' selected' : '') + '>' + esc(t.name) + ' (' + roleName(t.role) + ')</option>'; }).join('') + '</select></div>' +
+      '<div><label for="bt">Teacher</label><select id="bt"><option value="">— choose —</option>' + teachers.map(function (t) { return '<option value="' + esc(t.email) + '"' + (normEmail(t.email) === normEmail(b.TeacherEmail) ? ' selected' : '') + '>' + esc(t.name) + ' (' + roleName(t.role) + ')</option>'; }).join('') + '</select></div>' +
+      '<div><label for="bt2">Second teacher <span class="muted">(optional)</span></label><select id="bt2"><option value="">— none —</option>' + teachers.map(function (t) { return '<option value="' + esc(t.email) + '"' + (b.TeacherEmail2 && normEmail(t.email) === normEmail(b.TeacherEmail2) ? ' selected' : '') + '>' + esc(t.name) + ' (' + roleName(t.role) + ')</option>'; }).join('') + '</select></div>' +
       '<div><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="ba"' + (b.Active === 'No' ? '' : ' checked') + '> Batch is running</label></div>' +
       '<div class="err" id="be" role="alert" style="grid-column:1/-1"></div><div class="acts" style="grid-column:1/-1"><button class="btn pri" id="bsv">' + (b.ID ? 'Save changes' : 'Create batch') + '</button>' + (b.ID ? '<button class="btn" type="button" id="bcx">Cancel</button>' : '') + '</div></form>';
   }
   function draw(edit) {
     app.innerHTML = '<main class="wrap"><h2>Batches</h2><p class="muted" style="margin-top:0">A batch sets the class time and the teacher. Students are put in a batch when you approve them. ' + (teachers.length < 2 ? 'Add teachers under <a href="#staff">Staff</a> first.' : '') + '</p>' + form(edit) +
-      (D.batches.length ? '<div class="tbl"><table class="t"><thead><tr><th>Batch</th><th>Branch</th><th>Class time</th><th>Teacher</th><th>Students</th><th>Status</th><th></th></tr></thead><tbody>' + D.batches.map(function (b) {
+      (D.batches.length ? '<div class="tbl"><table class="t"><thead><tr><th>Batch</th><th>Branch</th><th>Class time</th><th>Teacher(s)</th><th>Students</th><th>Status</th><th></th></tr></thead><tbody>' + D.batches.map(function (b) {
         return '<tr><td><a class="rowlink" href="#batch/' + esc(b.ID) + '">' + esc(b.Name) + '</a><span class="sub">' + esc(b.Course) + '</span></td><td>' + esc(b.Branch) + '</td><td>' + esc(b.Schedule) + '</td><td>' + esc(teacherName(b)) + '</td><td>' + activeStudents(function (s) { return s.BatchID === b.ID; }).length + '</td><td>' + (b.Active === 'No' ? badge('Off') : badge('Active')) + '</td><td><button class="btn sm" data-ed="' + esc(b.ID) + '">Edit</button></td></tr>';
       }).join('') + '</tbody></table></div>' : '<div class="card muted">No batches yet.</div>') + '</main>';
     $('bf').onsubmit = function (e) {
       e.preventDefault();
-      var d = { id: $('bid').value || undefined, name: $('bn').value.trim(), branch: $('bb').value, course: $('bc').value, schedule: $('bs').value.trim(), teacherEmail: $('bt').value, active: $('ba').checked };
+      var d = { id: $('bid').value || undefined, name: $('bn').value.trim(), branch: $('bb').value, course: $('bc').value, schedule: $('bs').value.trim(), teacherEmail: $('bt').value, teacherEmail2: $('bt2').value, active: $('ba').checked };
       if (d.name.length < 2) { $('be').textContent = 'Enter a batch name.'; return; }
       if (!d.teacherEmail) { $('be').textContent = 'Choose the teacher.'; return; }
+      if (d.teacherEmail2 && normEmail(d.teacherEmail2) === normEmail(d.teacherEmail)) { $('be').textContent = 'The second teacher must be a different person.'; return; }
       $('bsv').disabled = true; act('saveBatch', d, d.id ? 'Batch saved.' : 'Batch created.');
     };
     if ($('bcx')) $('bcx').onclick = function () { draw(); };
@@ -311,7 +315,7 @@ function staffView() {
   app.innerHTML = '<main class="wrap"><h2>Staff</h2><p class="muted" style="margin-top:0">Everyone signs in on this same page. <b>Teachers</b> see only their own batches: student names and progress, no phone numbers or emails. <b>Branch managers</b> see and manage only their branch\'s students and batches. When you add someone, a password is shown once — give it to them.</p>' +
     '<form class="card inline" id="sf" novalidate style="margin-bottom:16px"><div style="grid-column:1/-1"><h3 style="margin:0">Add a teacher, branch manager or admin</h3></div><div><label for="se">Email</label><input type="email" id="se" autocomplete="off"></div><div><label for="sn">Name</label><input type="text" id="sn" maxlength="60"></div><div><label for="sr">Role</label><select id="sr"><option value="Teacher">Teacher</option><option value="Branch">Branch manager</option><option value="Admin">Admin</option></select></div><div id="sbw" hidden><label for="sbx">Branch</label><select id="sbx"><option value="">— choose —</option>' + C.BRANCHES.map(function (b) { return '<option>' + b + '</option>'; }).join('') + '</select></div><div><button class="btn pri" id="ss" style="width:100%">Add</button></div><div class="err" id="ser" role="alert" style="grid-column:1/-1"></div></form>' +
     '<div class="tbl"><table class="t"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Branch / batches</th><th>Status</th><th>Action</th></tr></thead><tbody>' + D.staff.map(function (s) {
-      var nb = D.batches.filter(function (b) { return String(b.TeacherEmail).toLowerCase() === s.email; }).map(function (b) { return esc(b.Name); }).join(', ');
+      var nb = D.batches.filter(function (b) { return batchTeachers(b).indexOf(normEmail(s.email)) >= 0; }).map(function (b) { return esc(b.Name); }).join(', ');
       var me = s.email === ME.email;
       return '<tr><td><b>' + esc(s.name) + '</b>' + (me ? ' <span class="muted">(you)</span>' : '') + '</td><td>' + esc(s.email) + '</td><td>' + badge(roleName(s.role)) + '</td><td>' + (s.role === 'Branch' ? '<b>' + esc(s.branch || '—') + '</b>' : s.role === 'Admin' ? '<span class="muted">all</span>' : (nb || '<span class="muted">none</span>')) + '</td><td>' + (s.active ? badge('Active') : badge('Off')) + (s.hasPassword ? '' : ' <span class="badge warn">no password</span>') + '</td><td class="acts">' +
         (me ? '' : '<button class="btn sm" data-rp="' + esc(s.email) + '">New password</button><button class="btn sm' + (s.active ? ' red' : '') + '" data-tg="' + esc(s.email) + '">' + (s.active ? 'Turn off' : 'Turn on') + '</button><select data-rl="' + esc(s.email) + '" aria-label="Change role" style="width:auto;padding:6px 8px;font-size:14px"><option value="">Change role…</option>' + ['Teacher', 'Admin'].concat(C.BRANCHES.map(function (b) { return 'Branch:' + b; })).map(function (v) { return '<option value="' + v + '">' + (v.indexOf('Branch:') === 0 ? 'Branch manager – ' + v.slice(7) : v) + '</option>'; }).join('') + '</select>') + '</td></tr>';

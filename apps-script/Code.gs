@@ -34,9 +34,9 @@ var TABS = {
              'Percent', 'Minutes', 'Detail'],
   Writing:  ['ID', 'Time', 'StudentID', 'Name', 'RegNo', 'Branch', 'Level', 'TaskID', 'Task', 'Words', 'Text',
              'AIBand', 'AIFeedback', 'TeacherMark', 'TeacherComment', 'MarkedBy'],
-  Batches:  ['ID', 'Name', 'Branch', 'Course', 'Schedule', 'TeacherEmail', 'Active', 'Created', 'Note']
+  Batches:  ['ID', 'Name', 'Branch', 'Course', 'Schedule', 'TeacherEmail', 'Active', 'Created', 'Note', 'TeacherEmail2']
 };
-var SCHEMA_VERSION = 'v3';
+var SCHEMA_VERSION = 'v4';
 
 // ---------------- menu ----------------
 function onOpen() {
@@ -137,7 +137,7 @@ function doPost(e) {
           students: read_('Students').filter(function (r) { return inScope(r.ID) && (isMgr || r.Status === 'Active'); }).map(isMgr ? adminStudent_ : teacherStudent_),
           results: read_('Results').filter(function (r) { return inScope(r.StudentID); }).map(isMgr ? stripRow_ : teacherResult_),
           writing: read_('Writing').filter(function (r) { return inScope(r.StudentID); }).map(isMgr ? stripRow_ : teacherWriting_),
-          batches: read_('Batches').filter(function (b) { return isAdmin || (isBranch ? b.Branch === staff.Branch : lower_(b.TeacherEmail) === lower_(staff.Email)); }).map(stripRow_),
+          batches: read_('Batches').filter(function (b) { return isAdmin || (isBranch ? b.Branch === staff.Branch : batchTeachers_(b).indexOf(lower_(staff.Email)) >= 0); }).map(stripRow_),
           staff: isAdmin ? read_('Admins').map(staffPublic_) : isBranch ? read_('Admins').filter(function (r) { return lower_(r.Email) === lower_(staff.Email) || (role_(r) === 'Teacher' && yes_(r.Active)); }).map(staffPublic_) : [staffPublic_(staff)] });
       // backwards compatible with v1 panel
       case 'listStudents': return out_({ ok: true, data: read_('Students').filter(function (r) { return inScope(r.ID); }).map(isMgr ? adminStudent_ : teacherStudent_) });
@@ -340,17 +340,22 @@ function branchStudentIds_(branch) {
   read_('Students').forEach(function (s) { if (s.Branch === branch) ids[s.ID] = 1; });
   return ids;
 }
+// A batch can have up to two teachers (TeacherEmail and TeacherEmail2).
+function batchTeachers_(b) { return [lower_(b.TeacherEmail), lower_(b.TeacherEmail2)].filter(function (x, i, a) { return x && a.indexOf(x) === i; }); }
 function teacherStudentIds_(email) {
-  var mine = {}; read_('Batches').forEach(function (b) { if (lower_(b.TeacherEmail) === lower_(email)) mine[b.ID] = 1; });
+  var mine = {}; read_('Batches').forEach(function (b) { if (batchTeachers_(b).indexOf(lower_(email)) >= 0) mine[b.ID] = 1; });
   var ids = {}; read_('Students').forEach(function (s) { if (s.BatchID && mine[s.BatchID]) ids[s.ID] = 1; });
   return ids;
 }
 
 function saveBatch_(p) {
-  var name = clean_(p.name), teacher = lower_(p.teacherEmail);
+  var name = clean_(p.name), teacher = lower_(p.teacherEmail), teacher2 = lower_(p.teacherEmail2);
   if (name.length < 2) return bad_('Please enter a batch name.');
-  if (teacher && !read_('Admins').some(function (r) { return lower_(r.Email) === teacher; })) return bad_('Teacher not found. Add the teacher under Staff first.');
-  var f = { Name: name, Branch: clean_(p.branch), Course: clean_(p.course), Schedule: clean_(p.schedule), TeacherEmail: teacher,
+  if (teacher2 && teacher2 === teacher) teacher2 = '';
+  if (teacher2 && !teacher) { teacher = teacher2; teacher2 = ''; }
+  var known = function (t) { return read_('Admins').some(function (r) { return lower_(r.Email) === t; }); };
+  if ((teacher && !known(teacher)) || (teacher2 && !known(teacher2))) return bad_('Teacher not found. Add the teacher under Staff first.');
+  var f = { Name: name, Branch: clean_(p.branch), Course: clean_(p.course), Schedule: clean_(p.schedule), TeacherEmail: teacher, TeacherEmail2: teacher2,
             Active: p.active === false ? 'No' : 'Yes', Note: clean_(p.note) };
   var dup = read_('Batches').filter(function (b) { return lower_(b.Name) === lower_(name) && b.ID !== p.id; })[0];
   if (dup) return bad_('A batch with this name already exists.');
@@ -427,7 +432,7 @@ function sendTeacherReports() {
     var st = batchStats_(ids, results, writing, weekAgo);
     var row = { b: b, st: st };
     all.push(row);
-    var t = lower_(b.TeacherEmail); if (t) (byTeacher[t] = byTeacher[t] || []).push(row);
+    batchTeachers_(b).forEach(function (t) { (byTeacher[t] = byTeacher[t] || []).push(row); });
   });
   var sent = 0;
   Object.keys(byTeacher).forEach(function (email) {
@@ -636,8 +641,8 @@ function student_(id) { return read_('Students').filter(function (r) { return r.
 function batchInfo_(id) {
   var b = id && read_('Batches').filter(function (x) { return x.ID === id; })[0];
   if (!b) return {};
-  var t = b.TeacherEmail && read_('Admins').filter(function (x) { return lower_(x.Email) === lower_(b.TeacherEmail); })[0];
-  return { batch: b.Name, schedule: b.Schedule, teacher: t ? t.Name : '' };
+  var staff = read_('Admins'), names = batchTeachers_(b).map(function (e) { var t = staff.filter(function (x) { return lower_(x.Email) === e; })[0]; return t ? t.Name : ''; }).filter(Boolean);
+  return { batch: b.Name, schedule: b.Schedule, teacher: names.join(' & ') };
 }
 function publicStudent_(r) {
   var b = batchInfo_(r.BatchID);
